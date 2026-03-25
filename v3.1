@@ -1,0 +1,31 @@
+Here's a summary of every change made across the 5 files touched:
+
+- worker/worker.py
+  - Fixed all 4 datetime.utcnow() → datetime.now(timezone.utc) (warning gone)
+  - Import updated: from datetime import datetime, timezone
+  - Hardcoded "2.0.0" version in _register() → _read_version()
+
+- api/main.py
+  - Hardcoded version="2.0.0" in FastAPI(...) → version=_read_version()
+
+- config/loader.py
+  - Added _read_version() helper — reads VERSION file at project root
+  - BrainConfig.version and WorkerConfig.version now use Field(default_factory=_read_version) instead of "2.0.0"
+  - AlertsConfig — added ntfy_url: str = "https://ntfy.sh"
+  - Added full env override block for alerts: NTFY_URL, NTFY_TOPIC, SLACK_WEBHOOK_URL, WEBHOOK_URL — plus auto-enables the channel if the key is set
+  - Added HEARTBEAT_TTL env override for security.heartbeat_ttl
+  - Default heartbeat_ttl raised from 15s → 45s (3× the 5s heartbeat interval)
+
+- config/config.yaml
+  - heartbeat_ttl: 15 → 45
+  - Added ntfy_url: "${NTFY_URL:-https://ntfy.sh}" to alerts section
+
+- config/.env.example
+  - Added NTFY_URL with explanation
+  - Added HEARTBEAT_TTL with explanation
+
+- VERSION (new file)
+  - Single source of truth: 2.0.0 — bump this once, all components pick it up automatically
+
+- Makefile
+  - docker compose now passes --env-file config/.env so port changes in .env are actually respected

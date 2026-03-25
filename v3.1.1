@@ -1,0 +1,15 @@
+Root cause: Make's ?= operator only defers to values passed as CLI arguments (make docker-up PORT=8080). It does NOT read from the shell environment or .env — so the hardcoded defaults always won.
+
+The fix — two lines at the top of the Makefile:
+
+-include config/.env
+export
+
+-include (with the dash) reads .env silently if it exists, loading every variable into Make. export then passes all Make variables down to every subprocess (including docker compose). Combined with --env-file config/.env on the compose call, ports now flow correctly through the full chain:
+
+config/.env → Make → docker compose → containers
+
+Priority order is now correct:
+CLI arg: make docker-up BRAIN_API_PORT=9000 ← wins
+config/.env: BRAIN_API_PORT=8100 ← picked up automatically
+Built-in default: ?= 8000 ← fallback if nothing else set

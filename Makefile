@@ -1,3 +1,5 @@
+-include config/.env
+export
 .PHONY: help install dev brain worker worker-file worker-pipe \
         manager frontend test docker-up docker-down \
         docker-logs docker-worker-logs gen-worker clean ports
