@@ -1,0 +1,140 @@
+brain:
+  name: ARBX
+  version: "2.0.0"
+  dry_run: true
+  log_level: "${LOG_LEVEL:-INFO}"
+  api_host:  "${BRAIN_API_HOST:-0.0.0.0}"
+  api_port:  8000   # override: BRAIN_API_PORT=8080
+  metrics_port: 9090  # override: BRAIN_METRICS_PORT=9190
+
+# ── Port configuration ─────────────────────────────────────────────────────
+# Every port can be overridden with an environment variable.
+# Set in config/.env or pass on the command line.
+#
+#   Variable              Default   Service
+#   BRAIN_API_PORT        8000      FastAPI REST + WebSocket
+#   BRAIN_METRICS_PORT    9090      Prometheus scrape endpoint
+#   FRONTEND_PORT         3000      React dashboard (nginx)
+#   REDIS_PORT            6379      Redis message bus
+#   POSTGRES_PORT         5432      PostgreSQL
+#   PROMETHEUS_PORT       9091      Prometheus UI
+#   GRAFANA_PORT          3001      Grafana dashboards
+ports:
+  brain_api:     8000
+  brain_metrics: 9090
+  frontend:      3000
+  redis:         6379
+  postgres:      5432
+  prometheus:    9091
+  grafana:       3001
+
+worker:
+  version: "2.0.0"
+  heartbeat_interval: 5
+  reconnect_delay: 3
+  max_pairs_per_worker: 10
+
+redis:
+  host: "${REDIS_HOST:-localhost}"
+  port: 6379
+  db: 0
+  opportunity_ttl_seconds: 10
+  fallback_memory: true
+
+postgres:
+  enabled: true
+  host: "${POSTGRES_HOST:-localhost}"
+  port: 5432
+  database: arbitrage
+  user: arbitrage
+  password: "${POSTGRES_PASSWORD}"
+
+security:
+  enabled: true
+  ca_cert_path: config/certs/ca.crt
+  brain_cert_path: config/certs/brain.crt
+  brain_key_path: config/certs/brain.key
+  nonce_ttl_seconds: 30
+  heartbeat_ttl: 45   # 3× heartbeat_interval (5s) + buffer — override: HEARTBEAT_TTL
+  require_mtls: true
+
+analysis:
+  enabled: true
+  plugins:
+    rsi:
+      enabled: true
+      weight: 0.15
+      params:
+        period: 14
+    macd:
+      enabled: true
+      weight: 0.15
+    bollinger_bands:
+      enabled: true
+      weight: 0.10
+    pattern_detector:
+      enabled: true
+      weight: 0.10
+    arima_predictor:
+      enabled: true
+      weight: 0.20
+    lstm_predictor:
+      enabled: false
+      weight: 0.25
+    sentiment:
+      enabled: false
+      weight: 0.10
+    volume_profile:
+      enabled: true
+      weight: 0.10
+  cr_9am:
+    enabled: true
+    weight: 0.30
+    timezone: "America/New_York"
+    active_from_hour: 9
+    active_to_hour: 10
+    min_setup_score: 0.55
+    pairs:
+      - "BTC/USDT"
+      - "ETH/USDT"
+      - "EUR/USD"
+
+trading:
+  min_profit_percent: 0.5
+  max_position_usd: 10000
+  default_volume: 0.5
+  slippage_percent: 0.1
+
+strategies:
+  spatial: true
+  triangular: true
+  dex: true
+  cross_chain: true
+  flashloan: true
+  fx: true
+  multi_country: true
+  graph_arbitrage: true
+
+graph_arbitrage:
+  enabled: true
+  algorithm: "bellman_ford"   # "bellman_ford" or "floyd_warshall"
+  max_hops: 5                 # maximum legs per cycle (2-5 recommended)
+  min_profit_pct: 0.1         # minimum net profit % after all costs
+  capital_usd: 10000          # trade size used for profit calculations
+  start_asset: "USDT"         # prefer cycles that start/end here
+  scan_interval_seconds: 5    # how often to run the algorithm
+
+alerts:
+  console: true
+  ntfy_enabled: false
+  ntfy_url: "${NTFY_URL:-https://ntfy.sh}"
+  ntfy_topic: "${NTFY_TOPIC}"
+  email_enabled: false
+  slack_enabled: false
+  slack_webhook: "${SLACK_WEBHOOK_URL}"
+  webhook_enabled: false
+  webhook_url: "${WEBHOOK_URL}"
+
+monitoring:
+  prometheus_enabled: true
+  prometheus_port: 9090

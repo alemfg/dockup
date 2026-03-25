@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Scenario: Flash Crash
+# Rapid price drop across all exchanges simultaneously.
+# Tests: alert system, analysis confidence drop, graph edges repricing
+# ─────────────────────────────────────────────────────────────────────────────
+name: flash_crash
+description: >
+  BTC drops 8% in 2 seconds across all exchanges.
+  ETH drops 10%. Should trigger analysis signals, test alert thresholds.
+
+ticks:
+  # Pre-crash baseline
+  - { exchange: binance,  pair: BTC/USDT, price: 65000, note: "pre-crash" }
+  - { exchange: kraken,   pair: BTC/USDT, price: 65000 }
+  - { exchange: binance,  pair: ETH/USDT, price: 3200  }
+
+  # Crash wave 1 (binance first)
+  - { exchange: binance,  pair: BTC/USDT, price: 62000, delay_ms: 200, note: "crash -4.6%" }
+  - { exchange: binance,  pair: ETH/USDT, price: 3000,  delay_ms: 50 }
+
+  # Crash wave 2 (all exchanges)
+  - { exchange: kraken,   pair: BTC/USDT, price: 61500, delay_ms: 300 }
+  - { exchange: binance,  pair: BTC/USDT, price: 60000, delay_ms: 200, note: "crash -7.7%" }
+  - { exchange: coinbase, pair: BTC/USDT, price: 60500, delay_ms: 100 }
+  - { exchange: binance,  pair: ETH/USDT, price: 2880,  delay_ms: 100 }
+
+  # Stabilise
+  - { exchange: binance,  pair: BTC/USDT, price: 60200, delay_ms: 500, note: "stabilising" }
+  - { exchange: kraken,   pair: BTC/USDT, price: 60100 }
+  - { exchange: binance,  pair: ETH/USDT, price: 2890  }
