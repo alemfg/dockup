@@ -1,0 +1,19 @@
+apiVersion: v2
+name: dockup
+description: Automated database backup manager with Docker auto-discovery
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - backup
+  - database
+  - docker
+  - postgresql
+  - mysql
+  - mongodb
+home: https://github.com/yourorg/dockup
+sources:
+  - https://github.com/yourorg/dockup
+maintainers:
+  - name: yourorg
+    email: ops@yourorg.com

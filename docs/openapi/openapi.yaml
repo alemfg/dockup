@@ -1,0 +1,305 @@
+openapi: "3.0.3"
+info:
+  title: dockup API
+  description: Automated database backup manager with Docker auto-discovery
+  version: "1.0.0"
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+security:
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Observability]
+      summary: Liveness check
+      security: []
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  time: { type: string, format: date-time }
+
+  /ready:
+    get:
+      tags: [Observability]
+      summary: Readiness check
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready: { type: boolean, example: true }
+
+  /metrics:
+    get:
+      tags: [Observability]
+      summary: Prometheus metrics exposition
+      security: []
+      responses:
+        "200":
+          description: Prometheus text format
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /zabbix:
+    get:
+      tags: [Observability]
+      summary: Zabbix HTTP agent metrics
+      security: []
+      responses:
+        "200":
+          description: Key/value metrics for Zabbix
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: number
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Obtain JWT bearer token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, example: admin }
+                password: { type: string, example: dockup }
+      responses:
+        "200":
+          description: JWT token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Invalid credentials
+
+  /api/v1/databases:
+    get:
+      tags: [Databases]
+      summary: List all discovered database targets
+      responses:
+        "200":
+          description: List of database targets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DatabaseTarget"
+
+  /api/v1/databases/{target_id}:
+    get:
+      tags: [Databases]
+      summary: Get a specific database target
+      parameters:
+        - name: target_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Database target details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseTarget"
+        "404":
+          description: Target not found
+
+  /api/v1/backup/{target_id}:
+    post:
+      tags: [Backups]
+      summary: Trigger a manual backup for a target
+      parameters:
+        - name: target_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Backup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerBackupResponse"
+        "404":
+          description: Target not found
+
+  /api/v1/history:
+    get:
+      tags: [Backups]
+      summary: List backup job history (all targets)
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BackupJob"
+
+  /api/v1/history/{target_id}:
+    get:
+      tags: [Backups]
+      summary: List backup job history for a specific target
+      parameters:
+        - name: target_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BackupJob"
+
+  /api/v1/retention:
+    get:
+      tags: [Retention]
+      summary: Get current retention policy
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetentionPolicy"
+    put:
+      tags: [Retention]
+      summary: Update retention policy (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRetentionRequest"
+      responses:
+        "200":
+          description: Policy updated
+        "403":
+          description: Insufficient permissions
+
+  /api/v1/status:
+    get:
+      tags: [Observability]
+      summary: System status and recent jobs
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatus"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    TokenResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, example: bearer }
+        role: { type: string, enum: [admin, operator, viewer] }
+
+    DatabaseTarget:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        db_type: { type: string, enum: [postgres, mysql, mariadb, mongodb, redis, influxdb, clickhouse, elasticsearch, mssql] }
+        host: { type: string }
+        port: { type: integer }
+        schedule: { type: string, example: "0 2 * * *" }
+        enabled: { type: boolean }
+        source: { type: string }
+        tags: { type: array, items: { type: string } }
+        retention_days: { type: integer }
+        discovered_at: { type: string, format: date-time }
+
+    BackupJob:
+      type: object
+      properties:
+        id: { type: string }
+        target_id: { type: string }
+        target_name: { type: string }
+        db_type: { type: string }
+        status: { type: string, enum: [pending, running, success, failed, skipped] }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time, nullable: true }
+        duration_seconds: { type: number, nullable: true }
+        output_path: { type: string }
+        size_bytes: { type: integer }
+        error: { type: string }
+
+    TriggerBackupResponse:
+      type: object
+      properties:
+        job_id: { type: string }
+        target_id: { type: string }
+        target_name: { type: string }
+        status: { type: string }
+        message: { type: string }
+
+    RetentionPolicy:
+      type: object
+      properties:
+        max_count: { type: integer, example: 7 }
+        max_age_hours: { type: integer, example: 168 }
+
+    UpdateRetentionRequest:
+      type: object
+      required: [max_count, max_age_hours]
+      properties:
+        max_count: { type: integer, minimum: 1, maximum: 365 }
+        max_age_hours: { type: integer, minimum: 1, maximum: 8760 }
+
+    SystemStatus:
+      type: object
+      properties:
+        version: { type: string }
+        uptime_seconds: { type: number }
+        discovered_databases: { type: integer }
+        active_workers: { type: integer }
+        queue_depth: { type: integer }
+        recent_jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/BackupJob"

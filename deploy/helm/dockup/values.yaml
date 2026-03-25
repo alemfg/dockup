@@ -1,0 +1,134 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/yourorg/dockup
+  pullPolicy: IfNotPresent
+  tag: ""  # Overrides the image tag; default is .Chart.AppVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+config:
+  jwtSecret: ""           # Required — set via --set or a sealed secret
+  logLevel: info
+  logFormat: json
+  apiPort: 8080
+  workerCount: 4
+  timeoutSeconds: 1800
+  retention:
+    maxCount: 7
+    maxAgeHours: 168
+
+storage:
+  type: local              # local | s3 | minio
+  local:
+    path: /backups
+  s3:
+    bucket: ""
+    region: us-east-1
+    endpointUrl: ""
+    existingSecret: ""     # k8s secret with AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+
+notifications:
+  slack:
+    enabled: false
+    webhookUrl: ""
+  ntfy:
+    enabled: false
+    url: https://ntfy.sh
+    topic: dockup-alerts
+    token: ""
+  email:
+    enabled: false
+    smtpHost: ""
+    smtpPort: 587
+    username: ""
+    fromAddr: ""
+    toAddrs: []
+    existingSecret: ""
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 20Gi
+  existingClaim: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: dockup.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+rbac:
+  create: true             # ClusterRole to read pod labels via Docker socket
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+dockerSocket:
+  enabled: true            # Mount /var/run/docker.sock
+  hostPath: /var/run/docker.sock
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Prometheus ServiceMonitor (requires prometheus-operator)
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+
+# PrometheusRule for alerting
+prometheusRule:
+  enabled: false
+  namespace: ""
+  labels: {}
+  rules:
+    - alert: DockupBackupFailed
+      expr: increase(dockup_jobs_failed_total[1h]) > 0
+      for: 0m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Backup failed on {{ $labels.target }}"
+    - alert: DockupNoDatabasesDiscovered
+      expr: dockup_discovered_databases == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "No database targets discovered"

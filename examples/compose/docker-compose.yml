@@ -1,0 +1,174 @@
+version: "3.9"
+
+# Full dockup stack: dockup + sample databases + observability
+
+services:
+
+  # ── dockup ────────────────────────────────────────────────────────────────
+  dockup:
+    image: ghcr.io/yourorg/dockup:latest
+    build: .
+    container_name: dockup
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      DOCKUP_API_JWT_SECRET: "change-me-in-production"
+      DOCKUP_API_PORT: "8080"
+      DOCKUP_LOG_LEVEL: "info"
+      DOCKUP_LOG_FORMAT: "console"
+      DOCKUP_BACKUP_OUTPUT_DIR: "/backups"
+      DOCKUP_BACKUP_WORKER_COUNT: "4"
+      DOCKUP_BACKUP_RETENTION_MAX_COUNT: "7"
+      DOCKUP_BACKUP_RETENTION_MAX_AGE_HOURS: "168"
+      DOCKUP_STORAGE_TYPE: "local"
+      # Uncomment for S3 storage:
+      # DOCKUP_STORAGE_TYPE: "s3"
+      # DOCKUP_STORAGE_S3_BUCKET: "my-backups"
+      # DOCKUP_STORAGE_S3_REGION: "us-east-1"
+      # Uncomment for Slack notifications:
+      # DOCKUP_NOTIFY_SLACK_ENABLED: "true"
+      # DOCKUP_NOTIFY_SLACK_WEBHOOK_URL: "https://hooks.slack.com/..."
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - backups:/backups
+    depends_on:
+      - postgres
+      - mysql
+      - mongodb
+      - redis
+    networks:
+      - dockup-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Sample: PostgreSQL ────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: dockup-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pguser
+      POSTGRES_PASSWORD: pgpass
+      POSTGRES_DB: app_db
+    labels:
+      dockup.enable: "true"
+      dockup.type: postgres
+      dockup.username: pguser
+      dockup.password: pgpass
+      dockup.database: app_db
+      dockup.schedule: "0 2 * * *"
+      dockup.retention.days: "14"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - dockup-net
+
+  # ── Sample: MySQL ─────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.3
+    container_name: dockup-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: mysqlpass
+      MYSQL_DATABASE: app_db
+    labels:
+      dockup.enable: "true"
+      dockup.type: mysql
+      dockup.username: root
+      dockup.password: mysqlpass
+      dockup.database: app_db
+      dockup.schedule: "@daily"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - dockup-net
+
+  # ── Sample: MongoDB ───────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: dockup-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongoadmin
+      MONGO_INITDB_ROOT_PASSWORD: mongopass
+    labels:
+      dockup.enable: "true"
+      dockup.type: mongodb
+      dockup.username: mongoadmin
+      dockup.password: mongopass
+      dockup.auth_db: admin
+      dockup.schedule: "0 3 * * *"
+      dockup.retention.days: "7"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - dockup-net
+
+  # ── Sample: Redis ─────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: dockup-redis
+    restart: unless-stopped
+    command: redis-server --requirepass redispass --save 60 1
+    labels:
+      dockup.enable: "true"
+      dockup.type: redis
+      dockup.password: redispass
+      dockup.schedule: "@hourly"
+    volumes:
+      - redis_data:/data
+    networks:
+      - dockup-net
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: dockup-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    networks:
+      - dockup-net
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: dockup-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: grafana
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/docker/grafana-provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - dockup-net
+
+volumes:
+  backups:
+  pg_data:
+  mysql_data:
+  mongo_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  dockup-net:
+    driver: bridge

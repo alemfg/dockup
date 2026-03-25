@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dockup.fullname" . }}
+  labels:
+    {{- include "dockup.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "dockup.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dockup.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "dockup.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: dockup
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.apiPort }}
+              protocol: TCP
+          env:
+            - name: DOCKUP_API_PORT
+              value: {{ .Values.config.apiPort | quote }}
+            - name: DOCKUP_API_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "dockup.fullname" . }}
+                  key: jwt-secret
+            - name: DOCKUP_LOG_LEVEL
+              value: {{ .Values.config.logLevel }}
+            - name: DOCKUP_LOG_FORMAT
+              value: {{ .Values.config.logFormat }}
+            - name: DOCKUP_BACKUP_WORKER_COUNT
+              value: {{ .Values.config.workerCount | quote }}
+            - name: DOCKUP_BACKUP_TIMEOUT_SECONDS
+              value: {{ .Values.config.timeoutSeconds | quote }}
+            - name: DOCKUP_BACKUP_RETENTION_MAX_COUNT
+              value: {{ .Values.config.retention.maxCount | quote }}
+            - name: DOCKUP_BACKUP_RETENTION_MAX_AGE_HOURS
+              value: {{ .Values.config.retention.maxAgeHours | quote }}
+            - name: DOCKUP_STORAGE_TYPE
+              value: {{ .Values.storage.type }}
+            {{- if eq .Values.storage.type "s3" }}
+            - name: DOCKUP_STORAGE_S3_BUCKET
+              value: {{ .Values.storage.s3.bucket }}
+            - name: DOCKUP_STORAGE_S3_REGION
+              value: {{ .Values.storage.s3.region }}
+            {{- if .Values.storage.s3.endpointUrl }}
+            - name: DOCKUP_STORAGE_S3_ENDPOINT_URL
+              value: {{ .Values.storage.s3.endpointUrl }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.notifications.slack.enabled }}
+            - name: DOCKUP_NOTIFY_SLACK_ENABLED
+              value: "true"
+            - name: DOCKUP_NOTIFY_SLACK_WEBHOOK_URL
+              value: {{ .Values.notifications.slack.webhookUrl }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+            {{- if .Values.dockerSocket.enabled }}
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: backups
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "dockup.fullname" .) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.dockerSocket.enabled }}
+        - name: docker-sock
+          hostPath:
+            path: {{ .Values.dockerSocket.hostPath }}
+            type: Socket
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

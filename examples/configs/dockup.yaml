@@ -1,0 +1,90 @@
+# dockup annotated configuration reference
+# All values can also be set via DOCKUP_ prefixed environment variables.
+# Environment variables take precedence over this file.
+
+api:
+  host: "0.0.0.0"          # Bind address
+  port: 8080                # HTTP port
+  jwt_secret: "change-me"   # REQUIRED — use a long random string in production
+  jwt_expire_minutes: 480   # 8 hours
+
+log:
+  level: info               # debug | info | warning | error
+  format: json              # json (prod) | console (dev)
+
+backup:
+  output_dir: /backups      # Where backup files are written
+  worker_count: 4           # Concurrent backup workers
+  timeout_seconds: 1800     # Per-job timeout (30 min)
+  compress: true            # Compress where not already compressed by driver
+  retention:
+    max_count: 7            # Keep at most this many backups per target
+    max_age_hours: 168      # Delete backups older than this (7 days)
+
+discovery:
+  docker_socket: "unix:///var/run/docker.sock"
+  label_prefix: dockup      # Container label prefix (e.g. dockup.type)
+  scan_interval_seconds: 60
+  exclude_images:           # Never back up these containers
+    - dockup
+    - prometheus
+    - grafana
+    - jaeger
+
+storage:
+  type: local               # local | s3 | minio
+
+  local:
+    path: /backups
+
+  s3:
+    bucket: ""
+    region: us-east-1
+    endpoint_url: ""        # Leave blank for AWS; set for MinIO
+    access_key: ""          # Or use AWS_ACCESS_KEY_ID env var
+    secret_key: ""          # Or use AWS_SECRET_ACCESS_KEY env var
+    prefix: "dockup/"       # S3 key prefix
+
+notifications:
+  slack:
+    enabled: false
+    webhook_url: ""
+    channel: "#ops-alerts"
+    min_level: warning      # info | warning | error | critical
+
+  ntfy:
+    enabled: false
+    url: https://ntfy.sh
+    topic: dockup-alerts
+    token: ""               # Optional auth token
+    min_level: warning
+
+  email:
+    enabled: false
+    smtp_host: ""
+    smtp_port: 587
+    username: ""
+    password: ""
+    from_addr: ""
+    to_addrs: []
+    min_level: error
+
+  webhook:
+    enabled: false
+    url: ""
+    secret: ""              # Used for HMAC signature header
+    min_level: info
+
+  pagerduty:
+    enabled: false
+    integration_key: ""
+    min_level: critical
+
+  teams:
+    enabled: false
+    webhook_url: ""
+    min_level: error
+
+schedule:
+  default_cron: "0 2 * * *"  # Fallback schedule for targets without dockup.schedule label
+  check_interval_seconds: 30  # How often to sync target → schedule mappings

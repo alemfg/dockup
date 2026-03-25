@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zabbix_export>
+  <version>6.4</version>
+  <templates>
+    <template>
+      <uuid>d4b8e22a-1c3a-4f9b-a812-7e5c9d0f1234</uuid>
+      <template>Template App dockup</template>
+      <name>dockup Backup Monitor</name>
+      <description>Monitor dockup automated database backup manager via HTTP agent endpoint.</description>
+      <groups>
+        <group><name>Templates/Applications</name></group>
+      </groups>
+      <macros>
+        <macro>
+          <macro>{$DOCKUP_URL}</macro>
+          <value>http://dockup:8080</value>
+          <description>dockup API base URL</description>
+        </macro>
+        <macro>
+          <macro>{$DOCKUP_QUEUE_WARN}</macro>
+          <value>5</value>
+          <description>Queue depth warning threshold</description>
+        </macro>
+      </macros>
+      <items>
+        <item>
+          <uuid>a1b2c3d4-0001-0000-0000-000000000001</uuid>
+          <name>dockup: discovered databases</name>
+          <type>HTTP_AGENT</type>
+          <key>dockup.discovered_databases</key>
+          <delay>1m</delay>
+          <value_type>FLOAT</value_type>
+          <url>{$DOCKUP_URL}/zabbix</url>
+          <posts>dockup.discovered_databases</posts>
+          <preprocessing>
+            <step>
+              <type>JSONPATH</type>
+              <parameters>
+                <parameter>$.["dockup.discovered_databases"]</parameter>
+              </parameters>
+            </step>
+          </preprocessing>
+        </item>
+        <item>
+          <uuid>a1b2c3d4-0001-0000-0000-000000000002</uuid>
+          <name>dockup: queue depth</name>
+          <type>HTTP_AGENT</type>
+          <key>dockup.queue_depth</key>
+          <delay>30s</delay>
+          <value_type>FLOAT</value_type>
+          <url>{$DOCKUP_URL}/zabbix</url>
+          <preprocessing>
+            <step>
+              <type>JSONPATH</type>
+              <parameters>
+                <parameter>$.["dockup.queue_depth"]</parameter>
+              </parameters>
+            </step>
+          </preprocessing>
+        </item>
+        <item>
+          <uuid>a1b2c3d4-0001-0000-0000-000000000003</uuid>
+          <name>dockup: active workers</name>
+          <type>HTTP_AGENT</type>
+          <key>dockup.active_workers</key>
+          <delay>1m</delay>
+          <value_type>FLOAT</value_type>
+          <url>{$DOCKUP_URL}/zabbix</url>
+          <preprocessing>
+            <step>
+              <type>JSONPATH</type>
+              <parameters>
+                <parameter>$.["dockup.active_workers"]</parameter>
+              </parameters>
+            </step>
+          </preprocessing>
+        </item>
+        <item>
+          <uuid>a1b2c3d4-0001-0000-0000-000000000004</uuid>
+          <name>dockup: health check</name>
+          <type>HTTP_AGENT</type>
+          <key>dockup.health</key>
+          <delay>30s</delay>
+          <value_type>TEXT</value_type>
+          <url>{$DOCKUP_URL}/health</url>
+          <preprocessing>
+            <step>
+              <type>JSONPATH</type>
+              <parameters>
+                <parameter>$.status</parameter>
+              </parameters>
+            </step>
+          </preprocessing>
+        </item>
+      </items>
+      <triggers>
+        <trigger>
+          <uuid>t1000001</uuid>
+          <expression>last(/Template App dockup/dockup.discovered_databases)=0</expression>
+          <name>dockup: No databases discovered</name>
+          <priority>HIGH</priority>
+          <description>dockup has found zero database targets. Check Docker socket access and container labels.</description>
+        </trigger>
+        <trigger>
+          <uuid>t1000002</uuid>
+          <expression>last(/Template App dockup/dockup.queue_depth)&gt;{$DOCKUP_QUEUE_WARN}</expression>
+          <name>dockup: Backup queue depth above {$DOCKUP_QUEUE_WARN}</name>
+          <priority>WARNING</priority>
+          <description>Backup queue depth is unusually high. Workers may be overloaded.</description>
+        </trigger>
+        <trigger>
+          <uuid>t1000003</uuid>
+          <expression>last(/Template App dockup/dockup.health)&lt;&gt;"ok"</expression>
+          <name>dockup: Service health check failed</name>
+          <priority>DISASTER</priority>
+          <description>dockup health endpoint did not return ok.</description>
+        </trigger>
+      </triggers>
+    </template>
+  </templates>
+</zabbix_export>
