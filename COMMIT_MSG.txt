@@ -1,0 +1,102 @@
+feat(v4.0): complete system — CRT rebuilt, RSI/MACD/BB, candle fetching, alerts, PostgreSQL, config hot-reload
+
+OVERVIEW
+--------
+v4.0 closes every hollow scaffold from v3.x. Every feature listed in
+the v3.4 suggestions is now implemented and working.
+
+1. CRT PLUGIN — COMPLETE REWRITE
+---------------------------------
+Previous: 8AM 1H + 9:15 15M candles, Reversal only.
+New: Bruce_Loki CRT methodology — prior session candles, two models.
+
+- Range: PRIOR SESSION CANDLE (1AM or 5AM) not 8AM 1H candle
+- TWO models: Reversal (5AM swept → reverse) + Continuation (1AM swept → follow)
+- CRTModelClassifier: detects model by checking if 5AM swept 1AM range
+- DOL (Draw on Liquidity): opposite side of swept range, model-dependent
+- TP1 = 50% of range candle (tp1_pct_of_range, configurable)
+- H4 manipulation check: flags high-volatility setups
+- get_daily_state(): exposes 1AM/5AM ranges + model for dashboard
+
+New config.yaml params (analysis.cr_9am):
+  reversal_range: "5am", continuation_range: "1am"
+  tp1_pct_of_range: 0.50, require_bos: true, require_fvg: false
+  check_h4_manipulation: true
+
+2. INDICATOR PLUGINS (was empty stubs)
+---------------------------------------
+RSIPlugin, MACDPlugin, BollingerBandsPlugin — fully implemented.
+Pure Python + stdlib math, no extra dependencies.
+Auto-register via @register on import. Auto-imported in context_engine.py.
+
+3. WORKER CANDLE FETCHING
+--------------------------
+_candle_loop(): fetch OHLCV every CANDLE_INTERVAL_S (default 60s).
+Fetches 200 candles on startup, then 10 incrementally.
+Publishes to STREAM_CANDLES — feeds CR plugin and analysis engine.
+New env vars: CANDLE_INTERVAL_S, CANDLE_TIMEFRAMES
+
+4. ALERT SENDER (was empty)
+-----------------------------
+alerts/sender.py: ntfy, Slack webhook, generic webhook.
+Queue-based async dispatch. Event helpers for risk_halt, sl_hit,
+tp_hit, worker_dead, opportunity, order_placed.
+Wired into brain, decision engine, subscriber.
+
+5. POSTGRESQL PERSISTENCE (was unused)
+----------------------------------------
+storage/db/persistence.py: asyncpg write-through cache.
+Tables: arbx_orders, arbx_positions, arbx_price_snapshots.
+Auto-created on startup. Fire-and-forget writes via asyncio queue.
+Gracefully disabled if PostgreSQL unavailable.
+load_recent_orders() restores order log on restart.
+
+6. CONFIG HOT-RELOAD
+---------------------
+config/loader.py: thread-safe manual cache, reload_config() clears it.
+
+New endpoints:
+  POST /api/config/reload/brain   — reload brain config in-place
+  POST /api/config/reload/workers — broadcast reload to all workers
+  GET  /api/config/current        — active config snapshot
+
+Worker: handles "reload_config" Redis command, re-reads env vars.
+
+Frontend (⚙️ Config & Reload tab):
+  - Reload buttons with result feedback
+  - Live config snapshot across all subsystems
+  - Note on what requires restart vs hot-reload
+
+7. FRONTEND
+------------
+ConfigReloadPanel.jsx [NEW] — hot-reload buttons + config snapshot
+CRPanel.jsx — CRDailyState component: 1AM/5AM ranges, model badge (REVERSAL/CONTINUATION)
+MarketFeed.jsx — stale threshold slider (5–120s), stale rows dimmed
+App.jsx — new ⚙️ Config tab, v4 branding (14 tabs total)
+
+NEW FILES
+---------
+alerts/sender.py
+analysis/plugins/indicators/indicators.py
+analysis/plugins/indicators/__init__.py
+api/routes/config_reload.py
+storage/db/persistence.py
+storage/db/__init__.py
+frontend/src/components/ConfigReloadPanel.jsx
+
+REWRITTEN
+---------
+analysis/plugins/cr_9am/cr_plugin.py
+
+UPDATED
+-------
+brain/brain.py, worker/worker.py, config/loader.py
+config/config.yaml, config/.env.example
+analysis/context_engine.py, api/main.py
+api/routes/cr_signals.py
+frontend/src/utils/api.js
+frontend/src/components/CRPanel.jsx
+frontend/src/components/MarketFeed.jsx
+frontend/src/App.jsx
+
+VERSION: 4.0.0
