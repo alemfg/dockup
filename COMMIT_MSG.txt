@@ -1,0 +1,68 @@
+feat(v3.4): native Prometheus metrics exporter, remove bundled Prometheus/Grafana, Grafana dashboard
+
+SUMMARY
+-------
+Prometheus and Grafana are removed from docker-compose. The brain now
+runs its own built-in metrics HTTP server, exposing /metrics on
+BRAIN_METRICS_PORT (default 9090). Point your existing Prometheus at it.
+A pre-built Grafana dashboard is included for immediate import.
+
+REMOVED
+-------
+docker/docker-compose.yml:
+  - prometheus service and prometheus_data volume
+  - grafana service and grafana_data volume
+
+config/loader.py:
+  - PortsConfig.prometheus (was 9091)
+  - PortsConfig.grafana (was 3001)
+  - PROMETHEUS_PORT and GRAFANA_PORT env var overrides
+
+config/.env.example:
+  - PROMETHEUS_PORT, GRAFANA_PORT, GRAFANA_PASSWORD variables
+
+Makefile:
+  - PROMETHEUS_PORT and GRAFANA_PORT default variables
+  - All references to Prometheus UI and Grafana in help/ports output
+
+NEW: monitoring/metrics.py (420 lines)
+---------------------------------------
+Full Prometheus exporter built on prometheus_client + aiohttp.
+Starts as a native asyncio task inside the brain process.
+Exposes /metrics and /health on BRAIN_METRICS_PORT.
+
+42 metrics across 8 categories:
+
+  arbx_brain_*       — up, uptime, trading mode info
+  arbx_worker_*      — status, latency, ticks/min, errors, memory, fleet totals
+  arbx_market_*      — price contexts, stale pairs, pair prices, spreads, balance
+  arbx_signal_*      — score per pair, signals counter, CR setups, graph paths
+  arbx_order_*       — totals, blocked, open count, execution histogram, slippage
+  arbx_position_*    — open count, unrealised P&L per position
+  arbx_pnl_*         — realised total, daily, win rate, trade count
+  arbx_risk_*        — daily loss, limit, drawdown, consecutive losses, halted
+
+NEW: monitoring/grafana/arbx-dashboard.json
+--------------------------------------------
+26 panels across 5 rows. Import via Grafana → Dashboards → Import → Upload JSON.
+  Row 1 — Brain Health:   status, uptime, trading mode, balance, halt, P&L, win rate
+  Row 2 — Workers:        fleet stats, latency chart, ticks/min chart, status table
+  Row 3 — Market:         price contexts, stale pairs, spreads, BTC/ETH price charts
+  Row 4 — P&L & Risk:     cumulative P&L, daily loss gauge, drawdown gauge, unrealised
+  Row 5 — Orders/Signals: signal scores, CR setups, open orders, consecutive losses
+Auto-refreshes every 15s. Compatible with Grafana 9+.
+
+NEW: docs/PROMETHEUS_GRAFANA_SETUP.md
+--------------------------------------
+Full setup guide: metric reference, scrape config, firewall rules,
+dashboard import, 5 recommended alert rules, multi-environment setup.
+
+BRAIN CHANGES
+-------------
+brain/brain.py:
+  - _start_metrics() coroutine added, runs as 5th asyncio task
+  - Banner logs metrics URL on startup
+
+VERSION
+-------
+3.4.0

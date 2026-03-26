@@ -1,0 +1,195 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ARBX v3.4 — Docker Compose
+#
+# ALL PORTS are configurable via environment variables in config/.env
+#
+#   Variable              Default   Service
+#   BRAIN_API_PORT        8000      FastAPI REST + WebSocket
+#   BRAIN_METRICS_PORT    9090      Prometheus scrape endpoint
+#   FRONTEND_PORT         3000      React dashboard (nginx)
+#   REDIS_PORT            6379      Redis message bus
+#   POSTGRES_PORT         5432      PostgreSQL
+#
+# Example — shift all ports by 100:
+#   BRAIN_API_PORT=8100 FRONTEND_PORT=3100 make docker-up
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  arb-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+
+services:
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: arb-redis
+    networks: [arb-net]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes: [redis_data:/data]
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: arb-postgres
+    networks: [arb-net]
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB:       arbitrage
+      POSTGRES_USER:     arbitrage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-arbitrage_secret}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arbitrage"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Brain ──────────────────────────────────────────────────────────────────
+  brain:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: arb-brain
+    networks: [arb-net]
+    ports:
+      - "${BRAIN_API_PORT:-8000}:${BRAIN_API_PORT:-8000}"
+      - "${BRAIN_METRICS_PORT:-9090}:${BRAIN_METRICS_PORT:-9090}"
+    env_file: ../config/.env
+    environment:
+      REDIS_HOST:         redis
+      REDIS_PORT:         "6379"
+      POSTGRES_HOST:      postgres
+      POSTGRES_PORT:      "5432"
+      BRAIN_API_PORT:     "${BRAIN_API_PORT:-8000}"
+      BRAIN_METRICS_PORT: "${BRAIN_METRICS_PORT:-9090}"
+    volumes:
+      - ../config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Worker Manager ─────────────────────────────────────────────────────────
+  worker_manager:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: arb-worker-manager
+    networks: [arb-net]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file: ../config/.env
+    environment:
+      REDIS_HOST:  redis
+      REDIS_PORT:  "6379"
+      MACHINE_IP:  worker_manager
+      MAX_WORKERS: "10"
+    command: ["python", "-m", "worker_manager.manager"]
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # ── Workers ────────────────────────────────────────────────────────────────
+  worker-binance:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    container_name: arb-worker-binance
+    networks: [arb-net]
+    env_file: ../config/.env
+    environment:
+      WORKER_ID:  worker-binance-01
+      EXCHANGE:   binance
+      PAIRS:      "${BINANCE_PAIRS:-BTC/USDT,ETH/USDT,SOL/USDT,BNB/USDT}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MACHINE_ID: docker-local
+    depends_on:
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  worker-kraken:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    container_name: arb-worker-kraken
+    networks: [arb-net]
+    env_file: ../config/.env
+    environment:
+      WORKER_ID:  worker-kraken-01
+      EXCHANGE:   kraken
+      PAIRS:      "${KRAKEN_PAIRS:-BTC/USDT,ETH/USDT,XRP/USDT}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MACHINE_ID: docker-local
+    depends_on:
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  worker-uniswap:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    container_name: arb-worker-uniswap
+    networks: [arb-net]
+    env_file: ../config/.env
+    environment:
+      WORKER_ID:  worker-uniswap-01
+      EXCHANGE:   uniswap
+      PAIRS:      "${UNISWAP_PAIRS:-ETH/USDT,WBTC/USDT,UNI/USDT}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MACHINE_ID: docker-local
+    depends_on:
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ── Frontend ───────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ..
+      dockerfile: Dockerfile.frontend
+      args:
+        BRAIN_API_PORT: "${BRAIN_API_PORT:-8000}"
+    container_name: arb-frontend
+    networks: [arb-net]
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      BRAIN_API_PORT: "${BRAIN_API_PORT:-8000}"
+    depends_on: [brain]
+    restart: unless-stopped
