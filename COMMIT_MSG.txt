@@ -1,0 +1,125 @@
+feat(v3.3): decision engine, risk manager, position tracker, order log, OCO execution, exchange sync, financials dashboard, log viewer
+
+BREAKING CHANGES
+----------------
+- brain/brain.py now requires DecisionEngine, RiskManager, PositionTracker, OrderLog
+- StreamSubscriber signature extended with decision_engine, position_tracker, order_log, risk_manager
+- worker._execute_order() fully replaced — now supports OCO and stop-limit placement
+
+NEW MODULES
+-----------
+brain/decision/engine.py
+  - Reads CR 9AM signals and graph arbitrage paths
+  - Applies configurable rules: min score, min RR, BOS/FVG requirements, cooldown
+  - Emits OrderCommand to bus in SIMULATE (log-only) or LIVE (send to exchange) mode
+  - Per-pair cooldown tracker prevents order spam
+  - Checks concurrent order limit before emitting
+
+brain/decision/risk_manager.py
+  - Circuit breakers: daily loss, drawdown from peak, consecutive losses
+  - Per-exchange and per-pair capital exposure limits
+  - Runtime-configurable limits (no restart needed)
+  - Manual halt resume via API and dashboard
+  - Tracks daily P&L reset at UTC midnight
+
+brain/decision/positions.py
+  - Opens a Position on every order fill
+  - Updates P&L on every price tick
+  - Detects SL hit, TP1 hit (partial), TP2 hit (full close)
+  - Notifies order log and risk manager on close
+  - Win/loss summary, daily P&L grouping for charts
+
+brain/orders/log.py
+  - Full order lifecycle: created → sent → filled → closed
+  - Exchange sync reconciliation (updates status from exchange-reported state)
+  - Queryable by exchange, pair, status, source
+  - Financial summary: win rate, avg P&L, fees, best/worst trade
+  - Daily P&L series for charting
+
+NEW API ROUTES
+--------------
+GET  /api/orders                — all orders, filterable
+GET  /api/orders/open           — pending/sent/partial orders
+GET  /api/orders/log            — full decision engine log (includes blocked/simulated)
+GET  /api/orders/daily-pnl      — daily P&L series
+GET  /api/orders/{id}           — single order detail
+GET  /api/positions             — open positions + summary
+GET  /api/positions/closed      — trade history
+POST /api/positions/{id}/close  — manual close at current price
+GET  /api/risk/status           — live circuit breaker gauges
+POST /api/risk/resume           — clear a halt manually
+GET  /api/risk/config           — current risk limits
+PATCH /api/risk/config          — update risk limits at runtime
+GET  /api/risk/decision-config  — current decision rules
+PATCH /api/risk/decision-config — update decision rules at runtime
+GET  /api/financials/summary    — combined financial overview
+GET  /api/financials/trades     — closed positions for trade history table
+GET  /api/financials/daily-pnl  — daily P&L for chart
+GET  /api/logs                  — last N log lines (REST)
+WS   /api/ws/logs               — live log tail via WebSocket
+
+WORKER CHANGES
+--------------
+worker._execute_order():
+  - Fully rewritten with CCXT OCO support (Binance, Coinbase, Bybit)
+  - Fallback to limit + separate stop-limit for non-OCO exchanges (Kraken etc.)
+  - Publishes full OrderResult: fill price, volume, fees, slippage, execution_time_ms
+  - Dry-run path returns simulated result without touching exchange
+
+worker._order_sync_loop() [NEW]:
+  - Runs every ORDER_SYNC_INTERVAL_S (default 30s) if API key present
+  - Fetches open orders and recent closed/cancelled orders via CCXT
+  - Publishes each as an order_result with source="exchange_sync"
+  - Brain reconciles internal order log from sync data
+  - Detects manual orders and external cancellations
+
+FRONTEND PANELS (NEW)
+---------------------
+FinancialsPanel (💹 Financials tab):
+  - Summary stats: total P&L, win rate, trade count, daily loss
+  - Risk gauges: daily loss, drawdown, consecutive losses
+  - Trade History table with manual close button
+  - Cumulative P&L SVG chart (no external chart library required)
+  - Shows simulated vs live trade breakdown
+
+RiskPanel (🛡 Risk & Rules tab):
+  - Live circuit breaker status with progress bars
+  - Inline-editable risk limits (max daily loss, drawdown, exposure)
+  - Inline-editable decision engine rules (min score, min RR, capital per trade)
+  - All edits apply immediately via PATCH API — no restart needed
+  - Manual resume button when system is halted
+
+LogViewerPanel (🖥 Logs tab):
+  - WebSocket live tail from brain process
+  - In-memory ring buffer (last 2000 lines, capped to avoid memory growth)
+  - Level filter: ALL / ERROR / WARNING / INFO / DEBUG
+  - Pause / Resume scroll
+  - Clear button
+  - Reconnects automatically on disconnect
+
+CONFIG ADDITIONS
+----------------
+config.yaml: decision{} and risk{} blocks (fully documented)
+.env.example: DECISION_ENABLED, CR_MIN_SCORE, CR_MIN_RR, MAX_CAPITAL_PER_TRADE,
+              MAX_CONCURRENT_ORDERS, COOLDOWN_SECONDS, ORDER_SYNC_INTERVAL_S,
+              MAX_DAILY_LOSS_USD, MAX_DRAWDOWN_PCT, MAX_CONSECUTIVE_LOSSES
+
+models.py additions:
+  - OrderCommand (entry, SL, TP1, TP2, TTL, source, confidence)
+  - OrderResult (fill price, volume, fees, slippage, exchange_order_id, SL_order_id)
+  - Position (entry to close lifecycle, P&L, close reason)
+  - OrderType enum: MARKET, LIMIT, LIMIT_MAKER, STOP_LIMIT, OCO
+  - OrderSide enum: BUY, SELL
+  - SignalSource enum: CR_9AM, GRAPH_ARB, SPATIAL, MANUAL
+
+BUGFIXES (carried from v3.2 hotfix)
+------------------------------------
+- All remaining datetime.utcnow() replaced with datetime.now(timezone.utc) across
+  models.py, graph/models.py, injector/engine.py, fleet/monitor.py,
+  auth_manager.py, inject.py, generate_worker.py (23 occurrences total)
+- config.yaml hardcoded version "2.0.0" removed — VERSION file always wins
+- load_config() now explicitly calls _read_version() as forced override
+
+VERSION
+-------
+3.3.0
