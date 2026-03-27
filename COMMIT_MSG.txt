@@ -1,0 +1,94 @@
+ARBX v4.4.0 — .env.local Pattern · Version Strings Unified
+
+── .env Split — Never Lose Your Config on Upgrade ──────────────────────────────
+
+The old single .env file created a painful upgrade situation: the new release
+ships .env.example with new variables, but your .env has your API keys.
+Merging them manually every time was error-prone and annoying.
+
+v4.4 adopts the .env.local pattern used by Next.js, Laravel, and Vite:
+
+  config/.env          ← SHIPPED WITH EVERY RELEASE
+                         Safe defaults, no secrets. Safe to overwrite.
+                         Committed to git. Contains every tunable with
+                         its recommended default value.
+
+  config/.env.local    ← YOUR PERSONAL FILE. Never touched by upgrades.
+                         API keys, passwords, and your personal overrides.
+                         In .gitignore. Created once from .env.local.example.
+
+  config/.env.example      ← Full reference doc. Every variable explained.
+  config/.env.local.example ← Minimal template for .env.local (NEW)
+
+Load order: .env first, then .env.local with override=True. Your values always
+win. After adding a new key to .env.local, press "Reload Brain Config" or
+"Reload Workers Config" in the dashboard — no restart needed.
+
+── Upgrade workflow from v4.3 ───────────────────────────────────────────────────
+
+1. Create config/.env.local from the example:
+     cp config/.env.local.example config/.env.local
+
+2. Move your secrets from your old .env into .env.local:
+     POSTGRES_PASSWORD=your_real_password
+     BINANCE_API_KEY=your_key
+     BINANCE_API_SECRET=your_secret
+     (plus any personal overrides)
+
+3. From now on, never edit config/.env again. Only edit .env.local.
+
+4. On every future upgrade: extract the new ZIP, your .env.local is untouched.
+
+── config/loader.py changes ─────────────────────────────────────────────────────
+
+Module-level load order:
+  load_dotenv(".env")                  # shipped defaults
+  load_dotenv(".env.local", override=True)  # personal overrides win
+
+reload_config() mirrors the same two-file reload with override=True so that
+"Reload Brain Config" picks up changes from both files.
+
+Module-level path constants _ENV_PATH and _ENV_LOCAL_PATH replace the inline
+Path() call. Used in both the startup load and reload_config().
+
+── Version strings — unified to v4.4.0 everywhere ──────────────────────────────
+
+Fixed stale version strings across the entire codebase. Previous state:
+  - App.jsx header/footer:     v4.3 ✓ (was already correct)
+  - docker-compose.yml:        v4.0.1 → v4.4
+  - frontend/package.json:     name="arbitrage-engine-v2-dashboard", version="2.0.0" → name="arbx-dashboard", version="4.4.0"
+  - Makefile banner:           "ARBX v2" → "ARBX v4.4"
+  - Dockerfile LABEL:          "ArbitrageEngine v2 Brain" → "ARBX v4.4 Brain"
+  - Dockerfile.worker LABEL:   "ArbitrageEngine v2 Worker" → "ARBX v4.4 Worker"
+  - README.md:                 "# ArbitrageEngine v2" → "# ARBX v4.4", all v2 refs
+  - docs/SYSTEM_DESCRIPTION.md: all v2 refs updated
+  - docs/INSTALL_AND_DEPLOYMENT.md: all v2 refs, zip filenames updated
+  - docs/INSTALL_DEPLOY_MAINTAIN.md: all v2 refs, zip filenames, docker image tags
+  - docs/GITHUB_README_HEADER.md: footer attribution
+  - config/.env.example header
+  - config/.env header
+
+Historical v1↔v2 references in V1_TO_V2_RELEASE_NOTES.md and
+GITHUB_PUBLISHING_GUIDE.md (which document the git history) are intentionally
+left intact — they are historical records, not current version claims.
+
+── Files Changed ────────────────────────────────────────────────────────────────
+
+  MOD   config/loader.py                  (.env + .env.local load order)
+  NEW   config/.env                       (shipped defaults, replaces old .env.example role)
+  NEW   config/.env.local.example         (minimal personal template)
+  MOD   config/.env.example               (full reference, header updated to v4.4)
+  MOD   .gitignore                        (.env.local protected, .env unprotected)
+  MOD   VERSION                           (4.3.0 → 4.4.0)
+  MOD   frontend/src/App.jsx              (v4.4, updated footer)
+  MOD   frontend/package.json             (name + version)
+  MOD   docker/docker-compose.yml         (header comment)
+  MOD   Makefile                          (banner)
+  MOD   Dockerfile                        (LABEL)
+  MOD   Dockerfile.worker                 (LABEL)
+  MOD   README.md                         (all v2 refs → v4.4)
+  MOD   docs/SYSTEM_DESCRIPTION.md        (all v2 refs → v4.4)
+  MOD   docs/INSTALL_AND_DEPLOYMENT.md    (all v2 refs → v4.4)
+  MOD   docs/INSTALL_DEPLOY_MAINTAIN.md   (all v2 refs → v4.4)
+  MOD   docs/GITHUB_README_HEADER.md      (footer)
+  MOD   docs/GITHUB_PUBLISHING_GUIDE.md   (footer attribution only)
