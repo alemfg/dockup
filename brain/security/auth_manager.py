@@ -112,7 +112,28 @@ class AuthManager:
         logger.info(f"Worker registered: {worker_id} ({exchange}) expires {expires_at.date()}")
         return secret_key
 
-    def revoke_worker(self, worker_id: str) -> bool:
+    def auto_register_worker(self, worker_id: str, reg_msg: dict) -> None:
+        """
+        Register a worker that self-registered without a pre-shared key.
+        These workers operate in 'open mode': they are tracked and accepted
+        but no HMAC signature is required or checked.
+        The empty string secret_key is the sentinel for open mode.
+        """
+        worker = RegisteredWorker(
+            worker_id=worker_id,
+            exchange=reg_msg.get("exchange", ""),
+            allowed_pairs=reg_msg.get("pairs", []),
+            secret_key="",            # empty = open mode, no HMAC
+            cert_fingerprint="",
+            can_execute_orders=False,  # safe default: cannot execute orders
+            max_order_size_usd=0.0,
+            expires_at=None,           # never expires
+        )
+        self._registry[worker_id] = worker
+        logger.info(
+            f"Auto-registered worker {worker_id} ({worker.exchange}) "
+            f"in open mode (no HMAC) pairs={worker.allowed_pairs}"
+        )
         if worker_id in self._registry:
             self._registry[worker_id].revoked = True
             logger.warning(f"Worker revoked: {worker_id}")
@@ -165,6 +186,10 @@ class AuthManager:
         if not worker.is_valid():
             self._log_rejection(worker_id, source_ip, "Revoked or expired")
             return False, "Worker revoked or expired"
+
+        # ── Open mode: no key configured — skip HMAC, accept message ─────────
+        if not worker.secret_key:
+            return True, "ok"
 
         # ── Timestamp freshness (30 second window) ───────────────────────────
         msg_time = payload.get("timestamp", 0)

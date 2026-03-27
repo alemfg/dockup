@@ -64,6 +64,17 @@ class StreamSubscriber:
 
     async def _route(self, stream: str, msg: dict) -> None:
         if self._verify_enabled and stream not in (STREAM_HEARTBEATS, STREAM_REGISTRATION):
+            # Check if this worker is known (may have registered via STREAM_REGISTRATION)
+            worker_id = msg.get("worker_id", "")
+            if worker_id and not self._auth.get_worker(worker_id):
+                # Worker not yet registered — auto-register in open mode immediately.
+                # This handles the race where price ticks arrive before the
+                # registration message is consumed from the stream.
+                self._auth.auto_register_worker(worker_id, msg)
+                logger.info(
+                    f"Worker {worker_id} auto-registered on first data message (open mode)."
+                )
+
             valid, reason = self._auth.verify_message(
                 {"payload": msg, "signature": msg.pop("_sig", "")},
                 source_ip=msg.get("machine", ""),
@@ -148,9 +159,17 @@ class StreamSubscriber:
 
     def _on_registration(self, msg: dict) -> None:
         worker_id = msg.get("worker_id", "")
-        logger.info(f"Worker self-registered: {worker_id}")
+        if not worker_id:
+            return
         if not self._auth.get_worker(worker_id):
-            logger.warning(f"Worker {worker_id} not pre-registered — open mode.")
+            # Worker sent a valid registration but has no pre-shared key.
+            # Auto-register it in "open mode" — no HMAC key, all messages pass.
+            self._auth.auto_register_worker(worker_id, msg)
+            logger.info(
+                f"Worker {worker_id} auto-registered (open mode — no pre-shared key)."
+            )
+        else:
+            logger.info(f"Worker {worker_id} re-registered (already known).")
 
     async def _on_order_result(self, msg: dict) -> None:
         order_id = msg.get("order_id", "")

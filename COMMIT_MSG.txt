@@ -1,31 +1,16 @@
-fix(v4.0.2): brain crash — StreamSubscriber missing alert_sender parameter
+fix(v4.0.4): FleetHealth stat boxes layout — all 6 in one uniform grid row
 
-BUGS FIXED
-----------
+Adding Paused and Blocked boxes created two separate grids: 5 boxes on
+the first row, Dead alone on a second row below it.
 
-After fixing DecisionEngine in v4.0.1, the same missing-parameter pattern
-existed in StreamSubscriber.__init__().
-
-brain.py passes alert_sender=self.alert_sender to StreamSubscriber but
-the constructor only accepted: bus, market_state, context_engine,
-auth_manager, config, currency_graph, decision_engine, position_tracker,
-order_log, risk_manager.
-
-Fix: added alert_sender=None as an optional parameter to StreamSubscriber.
-Stored as self._alert for future use (wiring SL/TP/opportunity alerts).
-
-Verified all other constructors brain.py calls (RiskManager, PositionTracker,
-AlertSender, PersistenceLayer, FleetMonitor, ContextEngine) — none have
-the same issue.
-
-Root cause: brain.py was updated programmatically to add alert_sender= to
-constructor calls, but the downstream class signatures were not updated
-at the same time.
+Fix: single grid with grid-cols-3 (mobile) / grid-cols-6 (sm+).
+All six boxes — Total, Healthy, Degraded, Paused, Blocked, Dead — sit
+in one consistent row on wider screens and wrap neatly 3×2 on mobile.
 
 FILES CHANGED
 -------------
-brain/stream/subscriber.py — added alert_sender=None to __init__
+frontend/src/components/FleetHealth.jsx
 
 VERSION
 -------
-4.0.2
+4.0.4

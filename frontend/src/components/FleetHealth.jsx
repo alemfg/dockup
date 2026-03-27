@@ -134,16 +134,14 @@ export default function FleetHealth({ onSelectWorker }) {
 
   return (
     <div className="space-y-4">
-      {/* Summary stats — now includes Paused and Blocked */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Card><Stat label="Total"    value={workers.length}        color="text-white" /></Card>
-        <Card><Stat label="Healthy"  value={healthy}               color="text-green-400" /></Card>
-        <Card><Stat label="Degraded" value={degraded}              color={degraded > 0 ? 'text-yellow-400' : 'text-gray-600'} /></Card>
-        <Card><Stat label="Paused"   value={paused}                color={paused > 0 ? 'text-yellow-300' : 'text-gray-600'} /></Card>
-        <Card><Stat label="Blocked"  value={blocked}               color={blocked > 0 ? 'text-orange-400' : 'text-gray-600'} /></Card>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Card><Stat label="Dead" value={dead} color={dead > 0 ? 'text-red-400' : 'text-gray-600'} /></Card>
+      {/* Summary stats — 6 boxes, 2 cols on mobile, 3 on tablet, 6 on desktop */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+        <Card><Stat label="Total"    value={workers.length} color="text-white" /></Card>
+        <Card><Stat label="Healthy"  value={healthy}        color={healthy > 0 ? 'text-green-400' : 'text-gray-600'} /></Card>
+        <Card><Stat label="Degraded" value={degraded}       color={degraded > 0 ? 'text-yellow-400' : 'text-gray-600'} /></Card>
+        <Card><Stat label="Paused"   value={paused}         color={paused > 0 ? 'text-yellow-300' : 'text-gray-600'} /></Card>
+        <Card><Stat label="Blocked"  value={blocked}        color={blocked > 0 ? 'text-orange-400' : 'text-gray-600'} /></Card>
+        <Card><Stat label="Dead"     value={dead}           color={dead > 0 ? 'text-red-400' : 'text-gray-600'} /></Card>
       </div>
 
       {/* Worker table */}
