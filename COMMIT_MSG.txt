@@ -1,0 +1,161 @@
+ARBX v4.3.0 — Graph Config via .env · BF+FW Dual-Run · Per-Exchange Fees
+
+── Summary ─────────────────────────────────────────────────────────────────────
+
+All graph arbitrage settings are now driven by .env variables. No hardcoded
+values remain in the graph engine. A full hot-reload (POST /api/config/reload/
+brain) applies new fees, hop limits, algorithm choice, and stale thresholds to
+the live graph instantly without restarting any container.
+
+── New: GraphConfig dataclass (config/loader.py) ───────────────────────────────
+
+Added GraphConfig(BaseModel) with 18 typed fields covering every aspect of the
+graph engine. Wired into AppConfig as cfg.graph. All fields have safe defaults
+so the system works with zero .env additions — the new vars are purely opt-in
+overrides.
+
+New env vars now read by load_config() and reload_config():
+
+  GRAPH_ALGORITHM        bellman_ford | floyd_warshall
+  GRAPH_FW_INTERVAL_S    seconds between FW scheduled deep scans (default 45)
+  GRAPH_MAX_HOPS         maximum cycle length (default 5)
+  GRAPH_MIN_HOPS         minimum cycle length (default 3) — NEW parameter
+  GRAPH_MIN_SPREAD_PCT   net profit floor after all fees (default 0.25)
+  GRAPH_STALE_EDGE_S     prune edges older than this (default 15)
+  GRAPH_HUB_ASSETS       comma-separated priority bridge assets
+  GRAPH_START_ASSET      preferred cycle start/end asset (default USDT)
+  UNISWAP_MAX_GAS_USD    cap on DEX gas per leg (default 8.0)
+
+  FEE_BINANCE_PCT        taker fee % (default 0.075)
+  FEE_KRAKEN_PCT         taker fee % (default 0.16)
+  FEE_BYBIT_PCT          taker fee % (default 0.10)
+  FEE_COINBASE_PCT       taker fee % (default 0.40)
+  FEE_UNISWAP_PCT        taker fee % (default 0.30)
+  FEE_SUSHISWAP_PCT      taker fee % (default 0.30)
+  FEE_PANCAKESWAP_PCT    taker fee % (default 0.25)
+  FEE_CURVE_PCT          taker fee % (default 0.04)
+
+Also added _env_float() helper to config/loader.py (was missing — only
+_env_int and _env_str existed).
+
+GraphConfig.fee_for(exchange) → float returns the fee as a decimal fraction
+(e.g. 0.00075) ready to pass into GraphEdge. Unknown exchanges default to 0.1%.
+
+── currency_graph.py — config-driven fees and stale threshold ──────────────────
+
+CurrencyGraph.__init__ now accepts graph_config=None (Optional[GraphConfig]).
+When provided, all fee/gas/stale values come from config instead of the old
+hardcoded EXCHANGE_FEES/EXCHANGE_GAS/EXCHANGE_SLIPPAGE dicts (kept as fallbacks
+when no config is provided).
+
+  _fee(exchange)      → config.fee_for(exchange) or fallback dict
+  _gas(exchange)      → fallback dict, capped at config.dex_max_gas_usd for DEX
+  _effective_stale()  → config.stale_edge_s or self._stale_threshold
+
+New method: update_config(graph_config) — called by the hot-reload endpoint to
+push new .env values into the live graph without a restart.
+
+summary() now returns algorithm, stale_edge_s, min_profit_pct, max_hops,
+hub_assets, and a fees dict (per-exchange fee % currently in use).
+
+── graph_arbitrage.py — dual BF+FW run, live config properties ─────────────────
+
+All config reads converted from __init__ snapshot to @property accessors on
+config.graph so that hot-reload is reflected on the very next scan tick.
+
+New dual-algorithm behaviour:
+  - GRAPH_ALGORITHM=bellman_ford (default): BF runs every ~5s. FW runs in the
+    background every GRAPH_FW_INTERVAL_S seconds. Any cycles FW finds that BF
+    missed are merged into the result set and logged as cross-check finds.
+  - GRAPH_ALGORITHM=floyd_warshall: FW is the primary algorithm on every tick.
+    BF is skipped entirely.
+
+fw_last_run timestamp tracked on the instance. status() method added for API.
+
+── bellman_ford.py + floyd_warshall.py — min_hops parameter ────────────────────
+
+Both find_profitable_cycles() and find_all_profitable_cycles() now accept a
+min_hops parameter (default 3). Cycles shorter than min_hops are filtered out.
+This prevents false positives from 2-hop "cycles" which are not real arbitrage.
+
+── brain.py — wired to config.graph ────────────────────────────────────────────
+
+CurrencyGraph now constructed with stale_threshold_seconds=config.graph.
+stale_edge_s and graph_config=config.graph. Brain banner updated to show
+algorithm, max_hops, and min_profit_pct at startup.
+
+── api/routes/config_reload.py — propagates graph config on reload ─────────────
+
+POST /api/config/reload/brain now calls brain.currency_graph.update_config(
+new_cfg.graph) so fee changes in .env take effect on the next price tick.
+Reload response body now includes a graph section with the new values.
+
+── api/routes/graph.py — new /graph/config endpoint ────────────────────────────
+
+GET /graph/config — read-only view of the active GraphConfig. Shows every
+field that can be set via .env, with a note pointing to the reload endpoint.
+
+GET /graph/paths — enriched with fw_status {interval_s, last_run_ago} and a
+config section {max_hops, min_hops, min_profit_pct, start_asset, hub_assets}.
+
+GET /graph/state — adjacency now includes gas_usd per edge. summary includes
+fees dict showing per-exchange fee % currently in use.
+
+── docker/docker-compose.yml — worker-bybit added ──────────────────────────────
+
+New worker-bybit service reads BYBIT_PAIRS env var (default BTC/USDT,ETH/USDT,
+SOL/USDT,BNB/USDT,XRP/USDT). Consistent with the recommended 4-exchange setup
+(Binance + Kraken + Bybit + Uniswap) from the arbitrage analysis.
+
+── frontend/src/components/GraphPanel.jsx — live config strip ──────────────────
+
+New config strip below GraphSummary shows live values from GET /graph/config:
+algorithm (colour-coded green=BF, blue=FW), FW countdown timer, min_profit_pct,
+hop range, stale threshold, hub assets, and per-exchange fee table. All items
+have hover tooltips explaining what each value does and which .env var controls it.
+
+── frontend/src/utils/api.js ────────────────────────────────────────────────────
+
+Added fetchGraphConfig() → GET /api/graph/config.
+
+── Files Changed ────────────────────────────────────────────────────────────────
+
+  MOD   config/loader.py                       (GraphConfig, _env_float, env reads)
+  MOD   arbitrage/graph/currency_graph.py      (config-driven fees, update_config)
+  MOD   arbitrage/graph/graph_arbitrage.py     (live properties, dual BF+FW, status)
+  MOD   arbitrage/graph/bellman_ford.py        (min_hops param)
+  MOD   arbitrage/graph/floyd_warshall.py      (min_hops param)
+  MOD   brain/brain.py                         (graph_config wiring, scan loop)
+  MOD   api/routes/config_reload.py            (graph propagation, richer response)
+  MOD   api/routes/graph.py                    (/graph/config endpoint, enriched responses)
+  MOD   docker/docker-compose.yml              (worker-bybit)
+  MOD   frontend/src/components/GraphPanel.jsx (live config strip + fetchGraphConfig)
+  MOD   frontend/src/components/ConfigReloadPanel.jsx (graph in reload response)
+  MOD   frontend/src/utils/api.js              (fetchGraphConfig)
+  MOD   frontend/src/App.jsx                   (version string)
+  MOD   VERSION                                (4.2.0 → 4.3.0)
+
+── Recommended .env additions ───────────────────────────────────────────────────
+
+  # Graph Arbitrage — Core Exchanges (3 CEX + 1 DEX)
+  GRAPH_EXCHANGES=binance,kraken,bybit,uniswap
+
+  BINANCE_PAIRS=BTC/USDT,ETH/USDT,BTC/ETH,SOL/USDT,SOL/BTC,BNB/USDT,BNB/BTC,XRP/USDT,DOGE/USDT,AVAX/USDT,LINK/USDT,MATIC/USDT
+  KRAKEN_PAIRS=BTC/USDT,ETH/USDT,BTC/ETH,SOL/USDT,XRP/USDT,BTC/EUR,ETH/EUR,XRP/EUR,SOL/EUR,DOT/USDT
+  BYBIT_PAIRS=BTC/USDT,ETH/USDT,SOL/USDT,BNB/USDT,XRP/USDT,AVAX/USDT,DOGE/USDT,LINK/USDT
+  UNISWAP_PAIRS=WBTC/USDT,ETH/USDT,ETH/USDC,LINK/USDT,MATIC/USDT,UNI/USDT
+
+  GRAPH_HUB_ASSETS=USDT,BTC,ETH,BNB,SOL,XRP
+  GRAPH_MIN_SPREAD_PCT=0.25
+  GRAPH_STALE_EDGE_S=15
+  GRAPH_ALGORITHM=bellman_ford
+  GRAPH_FW_INTERVAL_S=45
+  GRAPH_MAX_HOPS=5
+  GRAPH_MIN_HOPS=3
+
+  FEE_BINANCE_PCT=0.075
+  FEE_KRAKEN_PCT=0.16
+  FEE_BYBIT_PCT=0.10
+  FEE_UNISWAP_PCT=0.30
+  UNISWAP_MAX_GAS_USD=8.00
+
