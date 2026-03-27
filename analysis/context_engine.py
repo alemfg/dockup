@@ -31,7 +31,7 @@ class AnalysisContext:
     pair:          str
     plugin_config: dict
     price_history: Deque[float]            = field(default_factory=lambda: deque(maxlen=HISTORY_SIZE))
-    candle_history: Dict[str, List[dict]]  = field(default_factory=lambda: {"1M": [], "15M": [], "1H": []})
+    candle_history: Dict[str, List[dict]]  = field(default_factory=dict)  # keyed by timeframe, populated on first candle
     last_signal:   Optional[MarketSignal]  = None
     created_at:    datetime                = field(default_factory=lambda: datetime.now(timezone.utc))
     tick_count:    int                     = 0
@@ -138,9 +138,9 @@ class ContextEngine:
     def on_candle(self, exchange: str, pair: str, timeframe: str, candle: dict) -> None:
         """Store candle data for strategies that need OHLCV."""
         ctx = self._get_or_create(exchange, pair)
-        history = ctx.candle_history[timeframe]
+        # Use setdefault so any timeframe (1M, 5M, 15M, 1H, 4H, 1D …) is accepted
+        history = ctx.candle_history.setdefault(timeframe, [])
         history.append(candle)
-        # Keep last 200 candles per timeframe
         if len(history) > 200:
             ctx.candle_history[timeframe] = history[-200:]
 

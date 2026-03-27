@@ -1,45 +1,27 @@
-fix(v4.0.5): worker rejections on stream:candles + high latency shown as healthy
+fix(v4.0.6): KeyError '5M' on stream:candles handler
 
-BUG 1 — "Revoked or expired" on stream:candles
------------------------------------------------
-Root cause: auto_register_worker() had a corrupted body — the old
-revoke_worker() implementation was accidentally fused into it by a
-previous str_replace. Every auto-registered worker was immediately
-set revoked=True right after being added to the registry.
+ROOT CAUSE
+----------
+AnalysisContext.candle_history was initialised with a fixed dict:
+  {"1M": [], "15M": [], "1H": []}
 
-Additionally, verify_message() checked is_valid() (which reads the
-revoked flag) BEFORE the open-mode bypass (if not worker.secret_key).
-So the open-mode check never ran.
+Workers publish candles for all configured timeframes including 5M and 4H.
+When a 5M candle arrived, context_engine.on_candle() did:
+  history = ctx.candle_history[timeframe]   # KeyError: '5M'
 
-Fixes:
-  auth_manager.auto_register_worker() — removed the fused revoke body.
-    Now simply creates the RegisteredWorker and stores it. No revoked=True.
-
-  auth_manager.revoke_worker() — now returns False immediately for
-    open-mode workers (empty secret_key). The system cannot revoke a
-    worker that has no key to compromise.
-
-  auth_manager.verify_message() — moved open-mode bypass (if not
-    worker.secret_key: return True, "ok") to run BEFORE is_valid().
-    This ensures revoked/expiry checks never apply to open-mode workers.
-
-BUG 2 — High latency worker shows as "healthy"
------------------------------------------------
-brain/fleet/monitor.py: the high latency branch (latency_ms > 2000)
-returned a FleetAction::SUGGEST without setting w.status = DEGRADED.
-The code path fell through, then set w.status = HEALTHY on the next line.
-
-Fix: set w.status = WorkerStatus.DEGRADED before returning the action.
-Also upgraded urgency from INFO to WARNING so it surfaces in the fleet
-event log. The kraken worker at 2500ms will now show as Degraded (yellow).
+FIX
+---
+analysis/context_engine.py:
+  - candle_history default changed from a pre-seeded dict to dict()
+    (empty — no timeframes assumed).
+  - on_candle() now uses ctx.candle_history.setdefault(timeframe, [])
+    so any timeframe (1M, 5M, 15M, 1H, 4H, 1D, or any future one)
+    is accepted without raising KeyError.
 
 FILES CHANGED
 -------------
-brain/security/auth_manager.py  — auto_register corruption fix,
-                                   revoke_worker open-mode guard,
-                                   verify_message check ordering
-brain/fleet/monitor.py          — high latency → DEGRADED status
+analysis/context_engine.py
 
 VERSION
 -------
-4.0.5
+4.0.6
