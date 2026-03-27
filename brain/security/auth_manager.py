@@ -113,32 +113,30 @@ class AuthManager:
         return secret_key
 
     def auto_register_worker(self, worker_id: str, reg_msg: dict) -> None:
-        """
-        Register a worker that self-registered without a pre-shared key.
-        These workers operate in 'open mode': they are tracked and accepted
-        but no HMAC signature is required or checked.
-        The empty string secret_key is the sentinel for open mode.
-        """
+        """Open-mode registration — no pre-shared key, no HMAC required."""
         worker = RegisteredWorker(
             worker_id=worker_id,
             exchange=reg_msg.get("exchange", ""),
             allowed_pairs=reg_msg.get("pairs", []),
-            secret_key="",            # empty = open mode, no HMAC
+            secret_key="",
             cert_fingerprint="",
-            can_execute_orders=False,  # safe default: cannot execute orders
+            can_execute_orders=False,
             max_order_size_usd=0.0,
-            expires_at=None,           # never expires
+            expires_at=None,
         )
         self._registry[worker_id] = worker
         logger.info(
-            f"Auto-registered worker {worker_id} ({worker.exchange}) "
-            f"in open mode (no HMAC) pairs={worker.allowed_pairs}"
+            f"Auto-registered {worker_id} ({worker.exchange}) open mode"
         )
-        if worker_id in self._registry:
-            self._registry[worker_id].revoked = True
-            logger.warning(f"Worker revoked: {worker_id}")
-            return True
-        return False
+
+    def revoke_worker(self, worker_id: str) -> bool:
+        if worker_id not in self._registry:
+            return False
+        if not self._registry[worker_id].secret_key:
+            return False  # never revoke open-mode workers
+        self._registry[worker_id].revoked = True
+        logger.warning(f"Worker revoked: {worker_id}")
+        return True
 
     def get_worker(self, worker_id: str) -> Optional[RegisteredWorker]:
         return self._registry.get(worker_id)
@@ -182,14 +180,15 @@ class AuthManager:
             self._log_rejection(worker_id, source_ip, "Unknown worker")
             return False, "Unknown worker"
 
+        # ── Open mode: no key configured — skip all checks, accept message ───
+        # open-mode workers have secret_key="" and are never revoked by the system
+        if not worker.secret_key:
+            return True, "ok"
+
         # ── Worker must not be revoked or expired ────────────────────────────
         if not worker.is_valid():
             self._log_rejection(worker_id, source_ip, "Revoked or expired")
             return False, "Worker revoked or expired"
-
-        # ── Open mode: no key configured — skip HMAC, accept message ─────────
-        if not worker.secret_key:
-            return True, "ok"
 
         # ── Timestamp freshness (30 second window) ───────────────────────────
         msg_time = payload.get("timestamp", 0)

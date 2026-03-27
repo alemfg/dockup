@@ -256,11 +256,12 @@ class FleetMonitor:
 
         # ── High latency ──────────────────────────────────────────────────────
         if w.latency_ms > 2000:
+            w.status = WorkerStatus.DEGRADED
             return FleetAction(
                 action_type=FleetActionType.SUGGEST,
                 worker_id=w.worker_id,
                 reason=f"High latency ({w.latency_ms:.0f}ms)",
-                urgency="INFO",
+                urgency="WARNING",
                 suggestion=f"Consider deploying worker closer to {w.exchange} datacenter",
             )
 
