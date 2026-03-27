@@ -36,6 +36,7 @@ class StreamSubscriber:
         position_tracker=None,
         order_log=None,
         risk_manager=None,
+        alert_sender=None,
     ):
         self._bus             = bus
         self._market          = market_state
@@ -48,6 +49,7 @@ class StreamSubscriber:
         self._positions       = position_tracker
         self._order_log       = order_log
         self._risk            = risk_manager
+        self._alert           = alert_sender
 
     async def run(self) -> None:
         await self._bus.subscribe(
