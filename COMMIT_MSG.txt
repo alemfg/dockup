@@ -1,0 +1,73 @@
+fix(v4.0.1): brain crash, order sync errors, docker warnings, worker controls, status bar
+
+BUGS FIXED
+----------
+
+1. Brain crash on startup: DecisionEngine.__init__() unexpected keyword 'alert_sender'
+   brain/decision/engine.py: added alert_sender=None optional parameter.
+   Was wired in brain.py but never declared in DecisionEngine.__init__.
+
+2. Binance order sync: rate limit WARNING on fetchOpenOrders without symbol
+   worker/worker.py: sync now fetches per-pair instead of a global call.
+   Also sets ccxt option warnOnFetchOpenOrdersWithoutSymbol = False.
+
+3. Kraken order sync: fetchOrders() not supported
+   worker/worker.py: exchanges in no_fetch_orders set (kraken, kucoin, okx, huobi, gate)
+   now skip fetch_orders() and only call fetch_open_orders() per pair.
+
+4. docker-compose.yml: obsolete `version: "3.9"` attribute warning
+   Removed version field entirely (Docker Compose v2 ignores it).
+
+5. make docker-worker-logs only showed binance
+   Makefile: docker-worker-logs now tails all workers (binance, kraken, uniswap).
+   Added per-exchange targets: docker-worker-logs-binance, docker-worker-logs-kraken,
+   docker-worker-logs-uniswap, and docker-logs-all.
+
+WORKER CONTROLS
+---------------
+
+api/routes/workers.py: new endpoints
+  POST /workers/{id}/pause     — suspend ticks, worker stays connected
+  POST /workers/{id}/resume    — resume a paused worker
+  POST /workers/{id}/reload    — reload config for specific worker
+  POST /workers/{id}/restart   — restart specific worker
+  POST /workers/{id}/kill      — kill specific worker
+  POST /workers/all/reload     — broadcast reload to all workers
+  POST /workers/all/kill       — broadcast kill to all workers
+
+worker.py:
+  - _paused flag: pause/resume commands suspend _collect_and_publish
+  - heartbeat reports "paused" status when paused
+  - reload_config, pause, resume all handled in _command_listener
+
+FLEET HEALTH PANEL
+------------------
+frontend/src/components/FleetHealth.jsx — complete rewrite:
+  Per-worker action buttons (⏸ pause / ▶ resume / ↺ restart / ⟳ reload / ✕ kill)
+  Bulk actions row above table: "⟳ Reload all" and "✕ Stop all"
+  Workers sorted by status severity (healthy first, dead last)
+  New summary stat box: Paused (yellow) and Blocked (orange)
+  Dead workers shown with reduced opacity
+  Paused badge shown inline next to worker ID
+
+STATUS BAR
+----------
+frontend/src/components/StatusBar.jsx — updated:
+  Brain reload button (⟳ reload) next to brain status — instant config reload
+  with success/fail feedback that fades after 3 seconds
+  Additional market info: worker count, price contexts, stale pair warning,
+  total balance USD, open order count (when > 0)
+
+api/routes/system.py: open_orders count added to /api/system/status response
+
+SUGGESTIONS (not implemented — design choices for you):
+  The brain reload button is currently in the status bar next to "Brain".
+  Alternative placements considered:
+  - Header top-right corner (easy to find, always visible)
+  - A dedicated "⚙ System" dropdown in the header
+  - Inside the Config & Reload tab only (less prominent but cleaner header)
+  Current placement is good for quick access during development.
+
+VERSION
+-------
+4.0.1
