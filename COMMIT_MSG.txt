@@ -1,0 +1,119 @@
+ARBX v4.2.0 — Tooltips · Graph Visualization · .env Hot-Reload Fix
+
+── Bug Fixes ───────────────────────────────────────────────────────────────────
+
+[FIX] config/loader.py — reload_config() now calls load_dotenv(override=True)
+  before clearing the cache. This means API keys added to .env after startup
+  (e.g. BINANCE_API_KEY) are picked up immediately when "Reload Brain Config"
+  or "Reload Workers Config" is pressed. Previously only config.yaml was
+  re-read; .env was loaded once at module import and never refreshed.
+
+── New Feature: Sitewide Tooltips ──────────────────────────────────────────────
+
+New file: frontend/src/components/Tooltip.jsx
+  - <Tip text="..."> wrapper — hover any child element to reveal explanation
+  - <TipIcon text="..."> — drop a ⓘ icon next to any label
+  - pos prop: top/bottom/left/right
+  - wide prop: 288px wide tooltip for longer explanations
+  - Pure CSS, no external deps, dark-themed to match the dashboard
+
+Tooltips added to all 8 requested pages:
+
+1. Active Config Snapshot (ConfigReloadPanel.jsx)
+   - Every config row: Version, Trading Mode, Dry Run, Log Level,
+     Heartbeat TTL, Stale Threshold, all Decision Engine fields,
+     all Risk Manager fields, all CRT 9AM fields
+   - Reload buttons explain .env re-read behaviour
+
+2. Live Market Feed (MarketFeed.jsx)
+   - Summary cards: Price Contexts, Pairs Tracked, Stale Pairs, Total USD
+   - Table headers: Spread, Prices, Last seen (dashed underline cue)
+   - Spread value cell: dynamic tooltip shows profitability assessment
+   - Stale threshold slider: hover for explanation
+
+3. Analysis Contexts (AnalysisContexts.jsx)
+   - All 7 column headers with explanations
+   - Tick count cell: minimum ticks needed per indicator type
+   - Score cell: context-aware "strong / moderate / weak signal" message
+   - Trend cell: BULLISH / BEARISH / NEUTRAL definitions
+   - Volatility cell: HIGH / MEDIUM / LOW market regime definitions
+   - Plugin dots: hover each coloured dot for plugin name + score +
+     explanation of what that plugin measures (RSI, MACD, BB, CR, ARIMA, etc.)
+
+4. Coverage Map (CoverageMap.jsx)
+   - Coverage gap banner: explains what a gap means for arb detection
+   - Pair column header explanation
+   - Per-exchange column header
+   - Worker status dots: full definition of healthy/degraded/blocked/
+     overloaded/dead/starting on hover
+   - "— none —" gaps: explains how to spawn a replacement
+
+5. Risk Status (FinancialsPanel.jsx — Risk Status card)
+   - Daily Loss, Drawdown, Consecutive Losses gauges all have TipIcons
+
+6. Trade Stats (FinancialsPanel.jsx — Trade Stats card)
+   - Best Trade, Worst Trade, Avg P&L, Total Fees
+   - Top-level summary cards: Total P&L, Win Rate, Total Trades, Daily Loss
+   - Trade row P&L value: inline tooltip with profit/loss + fee note
+   - TP1✓ badge on open positions
+
+7. Financials (FinancialsPanel.jsx — summary cards)
+   - See above
+
+8. Risk & Rules (RiskPanel.jsx)
+   - Circuit Breaker gauges: Daily Loss, Drawdown, Consecutive Losses
+   - Peak Balance label
+   - All 4 Risk Limits editable fields
+   - All 6 Decision Engine editable fields
+
+── New Feature: Graph Arb Visualization ────────────────────────────────────────
+
+GraphPanel.jsx completely rewritten with:
+  - Pure-SVG force-directed graph (no external deps)
+    · Nodes laid out by iterative force simulation (repulsion + spring + gravity)
+    · Responsive — ResizeObserver tracks container width
+    · Colour-coded nodes per asset: BTC=orange, ETH=blue, USDT=green,
+      BNB=yellow, SOL=purple, XRP=cyan, ADA=indigo, others=grey
+  - Edge colour coding:
+    · Green     = part of a profitable cycle (from top paths list)
+    · Yellow    = marginal (rate near 1.0)
+    · Red       = unprofitable direction
+    · Grey      = stale data
+    · Green edges are thicker (2.5px) and more opaque
+    · Nodes in profitable cycles get a dashed outer ring
+  - Animated directed arrows (SVG markers, colour-matched)
+  - Hover tooltip on edges: shows From→To, exchange, rate, fee, stale flag
+  - Graph defaults to visible; toggle with Hide/Show button
+  - Legend below graph explains all four colours
+  - PathCard profit colours:
+    · Green (> 0.5%)  · Yellow (> 0%)  · Red (negative)
+    · Best profitable path gets green border
+  - All profit breakdown pills (gross, fees, gas) have hover tooltips
+  - Hop count has tooltip explaining multi-hop mechanics
+  - Raw edges table moved behind "Show raw edges" toggle (was always visible)
+
+── Files Changed ────────────────────────────────────────────────────────────────
+
+  NEW   frontend/src/components/Tooltip.jsx
+  MOD   frontend/src/components/ConfigReloadPanel.jsx
+  MOD   frontend/src/components/MarketFeed.jsx
+  MOD   frontend/src/components/AnalysisContexts.jsx
+  MOD   frontend/src/components/CoverageMap.jsx
+  MOD   frontend/src/components/FinancialsPanel.jsx
+  MOD   frontend/src/components/RiskPanel.jsx
+  MOD   frontend/src/components/GraphPanel.jsx
+  MOD   config/loader.py
+  MOD   VERSION (4.0.6 → 4.2.0)
+  MOD   frontend/src/App.jsx (version string)
+
+── Notes ────────────────────────────────────────────────────────────────────────
+
+Remaining issues from the v4.1 bug report that are deferred to v4.3:
+  - Worker spawn/kill from brain UI (worker lifecycle manager)
+  - CCXT exchange/pairs browser in Fleet Health
+  - CR force analysis time-gate bypass (route exists; candle build needs lifting
+    outside the time check in cr_plugin.py::_build_ranges())
+  - Log WebSocket verified working — if logs panel shows nothing, ensure
+    the brain has been running long enough to emit INFO-level messages
+    (the ring buffer fills from brain startup only)
+
