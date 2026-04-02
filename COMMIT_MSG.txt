@@ -1,0 +1,45 @@
+v4.7.0 — Multi-worker pair splitting: no more 200-pair hard cap
+
+── Feature: Automatic multi-worker splitting ────────────────────────────────
+
+When an exchange has more pairs than PAIRS_WORKER_SIZE, AutoSpawner now
+splits the full pair list into balanced chunks and spawns one worker per
+chunk — no pairs are dropped, no cap applied.
+
+  Example: BINANCE_PAIRS=ALL → 350 pairs resolved
+           PAIRS_WORKER_SIZE=200
+           → 2 workers spawned: worker-binance-slot0-auto (175 pairs)
+                                 worker-binance-slot1-auto (175 pairs)
+
+The split uses math.ceil to balance evenly. For N pairs and a limit of L:
+  n_workers  = ceil(N / L)
+  chunk_size = ceil(N / n_workers)   ← always balanced, never uneven
+
+── Self-healing with slot awareness ─────────────────────────────────────────
+
+The watch loop now tracks which slot (0, 1, 2...) has a live worker per
+exchange. A worker_id of worker-{exchange}-slot{N}-auto encodes the slot.
+If slot 1 of binance disappears, only that slot is re-spawned with its
+original pair slice — slot 0 is untouched.
+
+── worker.py: hard cap removed ──────────────────────────────────────────────
+
+The 200-pair hard cap in _resolve_all_pairs() is removed. The method is
+now only used when a worker is started manually with PAIRS=ALL (without
+AutoSpawner). In that case a advisory warning is logged suggesting the
+user switch to AutoSpawner for automatic splitting. AutoSpawner resolves
+ALL brain-side and always passes explicit pair slices to workers.
+
+── New config variable ───────────────────────────────────────────────────────
+
+  PAIRS_WORKER_SIZE=200   # max pairs per worker before splitting (default 200)
+                          # lower → more workers, each with fewer pairs
+                          # higher → fewer workers, each with more pairs
+
+── Files changed ─────────────────────────────────────────────────────────────
+
+  MOD   brain/auto_spawner.py     complete rewrite: split logic, slot tracking
+  MOD   config/loader.py          pairs_worker_size added to WorkersConfig
+  MOD   worker/worker.py          hard cap removed, advisory warning added
+  MOD   config/.env               PAIRS_WORKER_SIZE documented
+  MOD   VERSION / Dockerfiles / package.json / App.jsx  (v4.7.0)
