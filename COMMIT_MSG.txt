@@ -1,0 +1,61 @@
+v4.6.0 — PAIRS=ALL support + auto-spawn workers from config
+
+── Feature: PAIRS=ALL ────────────────────────────────────────────────────────
+
+Set any exchange's pairs to ALL in .env and the worker will call CCXT
+load_markets() at startup to fetch the full active spot market list.
+
+  BINANCE_PAIRS=ALL   # fetches all active USDT/USDC/BTC/ETH spot pairs
+  KRAKEN_PAIRS=ALL
+  BYBIT_PAIRS=ALL
+
+Quote filter (PAIRS_ALL_QUOTE_FILTER=USDT,USDC,BTC,ETH) limits which quote
+currencies are included — avoids pulling thousands of obscure pairs from
+large exchanges like Binance. Hard cap at 200 pairs per worker.
+
+DEX exchanges (uniswap, sushiswap, pancakeswap, curve) don't expose a
+reliable public market list via CCXT, so ALL for DEX falls back to a
+curated default pair list and logs a notice.
+
+On hot-reload, PAIRS=ALL is noted but not re-resolved (requires restart).
+Explicit comma-separated lists update immediately on reload as before.
+
+Files: worker/worker.py
+
+── Feature: Auto-spawn workers from EXCHANGES config ─────────────────────────
+
+Set EXCHANGES=binance,kraken,bybit,uniswap in .env. The brain will
+automatically spawn one worker container per exchange via the
+worker_manager on startup. No docker-compose worker blocks needed.
+
+  # Before (v4.5): 4 explicit worker-* service blocks in docker-compose.yml
+  # After  (v4.6): just one line in .env:
+  EXCHANGES=binance,kraken,bybit,uniswap
+
+How it works:
+  1. brain/auto_spawner.py reads config.workers.exchanges at startup.
+  2. For each exchange, reads {EXCHANGE}_PAIRS from env (or ALL).
+  3. Publishes a SPAWN action to stream:spawn_requests (Redis).
+  4. worker_manager receives SPAWN and creates a Docker container.
+  5. Every EXCHANGES_WATCH_INTERVAL seconds (default 60s), checks live
+     fleet. If any configured exchange has no healthy worker, re-spawns.
+     This gives self-healing: crashed workers restart automatically.
+
+New env vars:
+  EXCHANGES=binance,kraken,bybit,uniswap  # which exchanges to spawn
+  EXCHANGES_WATCH_INTERVAL=60             # fleet check interval (seconds)
+  EXCHANGES_SPAWN_DELAY=5                 # gap between spawns at startup
+  PAIRS_ALL_QUOTE_FILTER=USDT,USDC,BTC,ETH
+
+If EXCHANGES is empty, AutoSpawner is a no-op — existing behaviour (workers
+declared in docker-compose) continues to work unchanged.
+
+Files:
+  NEW   brain/auto_spawner.py
+  MOD   brain/brain.py              (import + instantiate + task added)
+  MOD   config/loader.py            (WorkersConfig + EXCHANGES parsing)
+  MOD   worker_manager/manager.py   (pass PAIRS=ALL through to container env)
+  MOD   docker/docker-compose.yml   (4 worker-* blocks removed)
+  MOD   config/.env                 (EXCHANGES added, PAIRS_ALL_QUOTE_FILTER)
+  MOD   config/.env.example         (documented new vars)
+  MOD   VERSION / Dockerfiles / package.json / App.jsx  (v4.6.0)

@@ -1,0 +1,11 @@
+# ARBX — Binance pairs
+# One pair per line. Comments with # are ignored.
+# Edit this file to change which pairs this worker collects.
+BTC/USDT
+ETH/USDT
+SOL/USDT
+BNB/USDT
+XRP/USDT
+ADA/USDT
+DOGE/USDT
+AVAX/USDT
