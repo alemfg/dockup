@@ -1,0 +1,45 @@
+v4.7.1 — Fix: workers not spawning on launch (consumer group race condition)
+
+── Root cause ────────────────────────────────────────────────────────────────
+
+worker_manager was subscribing to stream:spawn_requests using the "brain"
+consumer group (shared with the brain process). Because the brain creates
+this group at connect() time with id="0", and both processes use
+xreadgroup(id=">"), any SPAWN messages published before worker_manager's
+xreadgroup call started were simply never delivered to it.
+
+There were two compounding problems:
+  1. Wrong consumer group: worker_manager was joining the brain's "brain"
+     group instead of having its own group. In Redis Streams, consumer
+     groups compete — a message delivered to one consumer in a group is
+     not re-delivered to another.
+  2. No startup delay: AutoSpawner published SPAWN messages immediately
+     on brain startup, before worker_manager had time to connect to Redis
+     and start reading from the stream.
+
+── Fixes ─────────────────────────────────────────────────────────────────────
+
+worker_manager/manager.py:
+  - Creates its own "worker_manager" consumer group on STREAM_SPAWN
+    with id="0" (reads from beginning of stream) so it never misses
+    messages published before it started.
+  - Replaced bus.subscribe() (which used the "brain" group) with a
+    direct aioredis xreadgroup loop using the dedicated group.
+  - Added json and redis.asyncio imports at module level.
+
+brain/auto_spawner.py:
+  - Added EXCHANGES_STARTUP_WAIT delay (default 10s) before the first
+    SPAWN messages are published, giving worker_manager time to connect
+    and start consuming from the stream.
+  - EXCHANGES_WATCH_INTERVAL loop ensures missed spawns are retried
+    automatically even if the startup delay wasn't enough.
+
+config/.env:
+  - Added EXCHANGES_STARTUP_WAIT=10 (configurable)
+  - Changed EXCHANGES_SPAWN_DELAY default from 5 to 3
+
+── Files changed ──────────────────────────────────────────────────────────────
+  MOD   worker_manager/manager.py   own consumer group, reads from id=0
+  MOD   brain/auto_spawner.py       startup wait before first SPAWN
+  MOD   config/.env                 EXCHANGES_STARTUP_WAIT added
+  MOD   VERSION                     4.7.1
