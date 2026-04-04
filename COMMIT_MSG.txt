@@ -1,0 +1,24 @@
+v4.7.27 — Fix: version shows "ARBX v?" and "v4" in header
+
+── Root causes ───────────────────────────────────────────────────────────────
+
+1. Header badge showed hardcoded "v4" — never updated dynamically.
+
+2. VersionTag used raw fetch('/api/system') which doesn't exist.
+   The correct endpoint is /api/system/status. The fetch failed,
+   caught the error, and set version to '?'.
+
+3. VersionTag was an isolated component that bypassed the existing
+   fetchSystemStatus / usePolling infrastructure already used by StatusBar.
+   Two different mechanisms fetching the same data.
+
+── Fix ───────────────────────────────────────────────────────────────────────
+
+frontend/src/App.jsx:
+  - Added import { fetchSystemStatus, usePolling } from './utils/api'
+  - useVersion() hook now uses usePolling(fetchSystemStatus, 30000) —
+    the same function StatusBar uses, axios-based, correct URL.
+  - VersionTag: receives ver prop, shows "..." while loading, then version.
+  - VersionBadge: new component for the icon square — shows "v4.7" (major.minor)
+    parsed from the full version string.
+  - Both components get ver from the single useVersion() call in App().
