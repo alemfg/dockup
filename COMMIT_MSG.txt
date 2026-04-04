@@ -1,0 +1,29 @@
+v5.3.0 — Fix: ALL API routes broken by missing BaseModel import
+
+ROOT CAUSE (critical):
+config_reload.py used `class ExchangePatchRequest(BaseModel)` and
+`class ExchangePatchRequest(BaseModel)` at module level, but only imported
+`BaseModel` inside a function with `from pydantic import BaseModel`.
+
+When FastAPI imports config_reload.py at startup, the class definitions
+execute immediately at module level — before the function-level imports run.
+This raised `NameError: name 'BaseModel' is not defined` at line 324.
+
+FastAPI catches this import error and the entire application router fails
+to initialize. ALL routes return empty responses — not just config/current.
+
+This explains ALL reported symptoms simultaneously:
+  - /api/config/current returns empty → config tabs show nothing
+  - /api/fleet/workers returns empty → fleet page shows no workers
+  - /api/system/status returns empty → version shows "loading"
+  - All other API calls silently fail
+
+FIX: Moved `from pydantic import BaseModel` and `from typing import Any`
+to the top of config_reload.py where they belong. Removed the duplicate
+inline imports that were incorrectly placed inside a function.
+
+ALSO FIXED:
+- config/current: removed reference to cr_9am.tp1_pct_of_range (doesn't exist)
+- config/current: removed reference to risk.max_open_positions (doesn't exist)
+- Panel: replaced max_open_positions with max_pair_exposure_usd (real field)
+- Fleet monitor: added diagnostic logging to _process_heartbeat

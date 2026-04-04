@@ -1,0 +1,41 @@
+v5.1.0 — Full config portal: all .env variables visible in UI
+
+PROBLEM: Config & Reload only showed a subset of settings. Ports, worker
+timing, auto-spawner, analysis whitelist, alerts, DEX settings, and many
+other variables from .env were invisible in the portal.
+
+ROOT CAUSE: /api/config/current returned only ~10 fields. ConfigReloadPanel
+had only 7 sections, many read-only or missing entirely.
+
+FIXES:
+
+api/routes/config_reload.py — /api/config/current now returns everything:
+  ports:     brain_api, brain_metrics, frontend, redis, postgres
+  workers:   exchanges, pairs_worker_size, max_workers, tick_interval_ms,
+             heartbeat_interval_s, balance_interval_s, worker_image,
+             pairs_all_quote_filter
+  spawner:   watch_interval_s, spawn_delay_s, startup_wait_s
+  analysis:  analysis_pairs, price_outlier_threshold
+  graph:     all fields including start_asset, hub_assets, capital_usd,
+             dex_max_gas_usd, all per-exchange fees
+  alerts:    enabled flags and topic (URLs redacted — security)
+  cr_9am:    all fields including reversal_range, continuation_range,
+             require_bos, require_fvg
+
+frontend ConfigReloadPanel now has 11 sections:
+  ↺ Hot Reload   — reload buttons
+  🌐 Exchanges   — exchange manager with + popup
+  🔌 Ports       — all ports with restart warning banner
+  ⚙ Workers      — pool settings, tick/heartbeat/balance intervals,
+                   auto-spawner timing, quote filter, worker image
+  🛡 Risk        — editable circuit breakers
+  ⚡ Decision    — editable order generation rules
+  🕸 Graph Arb   — editable engine settings, assets, DEX gas cap,
+                   all 14 per-exchange taker fees
+  🔬 Analysis    — analysis pairs whitelist, outlier threshold
+  🔔 Alerts      — enabled flags, topic name (no secret URLs)
+  📐 9AM CR      — all CR model settings, min score editable
+  🧠 Brain       — read-only identity/runtime snapshot
+
+Editable fields: hover → Edit button → inline input → Enter or ✓.
+Read-only fields: all ports, worker image, timing vars (require restart).

@@ -1,0 +1,53 @@
+v5.2.0 — Fix: version dots, exchanges not loading, add test buttons
+
+── Bug 1: Version shows "..." instead of number ─────────────────────────────
+
+ROOT CAUSE: useVersion() used usePolling(fetchSystemStatus) which has
+fetchFn as a dependency. When ExchangeManager crashed (bug 2), the entire
+component tree re-rendered continuously, creating new fetchFn closures each
+render, causing usePolling to reset and never settle on a value.
+
+FIX: useVersion() now uses a direct fetch('/api/system/status') with a
+plain useEffect + setInterval(60s). No polling dependency. Immune to
+component tree crashes elsewhere. Shows "loading" while fetching, then
+the real version string (e.g. 5.2.0). Never gets stuck on "...".
+
+── Bug 2: Exchanges not loading from .env on Config page ────────────────────
+
+ROOT CAUSE: usePolling() did not return a refresh function.
+ExchangeManager destructured { refresh } from usePolling() — got undefined.
+Calling refresh() (on add/remove/edit) threw a runtime error that crashed
+the ExchangeManager component silently on first interaction.
+
+FIX: usePolling() now returns refresh = () => setTick(t => t+1).
+Incrementing tick is in the useEffect dependency array, which forces a
+re-fetch immediately. All refresh() calls in ExchangeManager now work.
+
+The exchanges loading from .env was actually working all along — the panel
+just crashed before it could render. Now it renders correctly.
+
+── Feature: Alert Test Button ───────────────────────────────────────────────
+
+New POST /api/alerts/test endpoint:
+  Sends "ARBX — Test Alert" through all configured channels (ntfy, Slack,
+  webhook). Returns which channels were targeted, or warns if none configured.
+
+"📣 Send Test Alert" button in the Alerts section of Config & Reload.
+Shows ✓ success or ✗ error with the response message inline.
+
+── Feature: Exchange Test Button ────────────────────────────────────────────
+
+New POST /api/config/exchanges/test endpoint:
+  Fetches BTC/USDT ticker from the exchange via CCXT. Returns price and
+  whether the connection is anonymous or authenticated (API key present).
+
+"🔌 Test connection" button appears:
+  - On each active exchange card in the Exchange Manager
+  - In the Add Exchange popup (tests before saving)
+
+── Files changed ─────────────────────────────────────────────────────────────
+  MOD  frontend/src/App.jsx                   direct fetch in useVersion()
+  MOD  frontend/src/utils/api.js              refresh in usePolling, testAlerts, testExchange
+  MOD  frontend/src/components/ConfigReloadPanel.jsx  ExchangeTestButton in card + modal
+  MOD  api/routes/config_reload.py            /alerts/test, /config/exchanges/test
+  MOD  VERSION                                5.2.0

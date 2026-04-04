@@ -1,0 +1,43 @@
+# ── Secrets — NEVER commit ─────────────────────────────────────────────────────
+# .env.local contains your API keys and personal overrides — keep it private.
+# .env (shipped defaults) is safe to commit — it contains no secrets.
+config/.env.local
+*.env.secret
+config/certs/*.key
+config/certs/*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Docker volumes
+postgres_data/
+redis_data/
+prometheus_data/
+grafana_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
