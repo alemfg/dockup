@@ -1,0 +1,38 @@
+v5.5.0 — Alerts config panel with credentials + SMTP TLS modes
+
+── Alerts tab: full configuration panel ─────────────────────────────────────
+
+Each channel is now a collapsible card showing:
+  - Status dot (green = configured, grey = not set)
+  - "configured" / "not configured" badge
+  - 📣 Test button (tests only that channel, shows result inline)
+  - Expanded view: all relevant fields (host, port, TLS mode, from/to)
+  - Credentials shown as "●●●● (set)" — never plaintext
+  - ".env.local instructions" block when not configured
+
+SMTP Email card shows:
+  EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, EMAIL_TLS_MODE (starttls/ssl/none),
+  EMAIL_FROM, EMAIL_TO, EMAIL_PASSWORD (masked)
+  + note explaining Gmail App Passwords and which port/mode to use
+
+── Email TLS modes ──────────────────────────────────────────────────────────
+
+alerts/sender.py — _send_email():
+  EMAIL_TLS_MODE=starttls  → SMTP + STARTTLS  (port 587, most providers)
+  EMAIL_TLS_MODE=ssl       → SMTP_SSL         (port 465, older servers)
+  EMAIL_TLS_MODE=none      → plain SMTP       (port 25, internal servers)
+
+config/loader.py — AlertsConfig:
+  Added email_tls_mode: str = "starttls" with EMAIL_TLS_MODE env var
+  Added email_smtp_port loaded from EMAIL_SMTP_PORT
+
+── config/current: full alerts exposure ─────────────────────────────────────
+
+/api/config/current now returns all alert channel fields:
+  ntfy:     ntfy_enabled, ntfy_url, ntfy_topic
+  slack:    slack_enabled, slack_configured (bool — no URL shown)
+  discord:  discord_enabled, discord_configured
+  telegram: telegram_enabled, telegram_chat_id, telegram_configured
+  email:    email_enabled, email_smtp_host, email_smtp_port,
+            email_tls_mode, email_from, email_to, email_configured
+  webhook:  webhook_enabled, webhook_configured

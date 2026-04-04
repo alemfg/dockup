@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ARBX — Example Prometheus scrape configuration
+#
+# Copy the relevant job(s) into your external Prometheus server's
+# prometheus.yml under the scrape_configs section.
+#
+# Replace <ARBX_HOST> with the IP or hostname where ARBX brain is running.
+# Default metrics port is 9090 (override with BRAIN_METRICS_PORT in config/.env)
+# ─────────────────────────────────────────────────────────────────────────────
+
+scrape_configs:
+
+  # ── ARBX Brain (required) ──────────────────────────────────────────────────
+  - job_name: "arbx_brain"
+    scrape_interval: 15s
+    scrape_timeout:  10s
+    static_configs:
+      - targets: ["<ARBX_HOST>:9090"]
+        labels:
+          environment: "production"
+          service:     "arbx-brain"
+    metrics_path: "/metrics"
+
+  # ── If running multiple ARBX instances (e.g. staging + production) ─────────
+  # - job_name: "arbx_brain_staging"
+  #   static_configs:
+  #     - targets: ["staging-host:9090"]
+  #       labels:
+  #         environment: "staging"
+  #         service:     "arbx-brain"
