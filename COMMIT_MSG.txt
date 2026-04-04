@@ -1,0 +1,26 @@
+v4.7.23 — Fix: API permanently blocked by stream processing (thread isolation)
+
+ROOT CAUSE: FastAPI/uvicorn ran in the same asyncio event loop as the Redis
+stream subscriber. When workers flood the stream with price ticks (hundreds
+of pairs × multiple exchanges × 2s tick interval), the subscriber loop
+consumed all event loop time and the API handler never got a free slot.
+curl would work briefly at startup before stream traffic built up, then hang.
+
+ANALYSIS_PAIRS whitelist (v4.7.22) reduced plugin load but didn't fix the
+core issue — even with no plugins running, just deserializing and routing
+thousands of price ticks per second was enough to starve the API.
+
+FIX 1 — brain/brain.py: uvicorn in dedicated OS thread
+  _start_api() now launches uvicorn in a separate Python thread with its
+  own asyncio event loop (asyncio.new_event_loop()). This means the API
+  server is completely isolated from the brain's Redis stream loop.
+  No amount of stream flooding can block an API response.
+
+FIX 2 — messaging/bus.py: asyncio.sleep(0) after every batch
+  Explicitly yields to the event loop after processing each batch of
+  messages. Ensures other coroutines (graph scan, health check, etc.)
+  always get scheduled even under maximum stream load.
+
+FIX 3 — brain/stream/subscriber.py: batch_size=1
+  Processes one message at a time, yielding to the event loop between
+  each. Reduces maximum latency spike from processing a full batch.
