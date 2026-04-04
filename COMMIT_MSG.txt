@@ -1,0 +1,43 @@
+v4.7.26 — Fix: .env.local values not overriding .env (root cause fixed)
+
+── Root cause ────────────────────────────────────────────────────────────────
+
+There were THREE layers fighting each other, all won by the wrong source:
+
+1. Makefile `-include config/.env` — fed .env vars into Make, which then
+   expanded ${BRAIN_API_PORT:-8000} in compose yaml BEFORE .env.local
+   was ever consulted. .env.local was never -include'd in Make.
+
+2. `docker compose --env-file config/.env` — only .env was passed for
+   compose variable substitution (${...} in ports: and environment:).
+   .env.local was not passed, so its port values were ignored here too.
+
+3. `environment:` block with `BRAIN_API_PORT: "${BRAIN_API_PORT:-8000}"` —
+   even if env_file loaded .env.local correctly, this block re-set the
+   var from the Make-expanded value, overriding it again at runtime.
+
+── Fixes (all three layers) ─────────────────────────────────────────────────
+
+Makefile:
+  Added `-include config/.env.local` AFTER `-include config/.env` so
+  Make variables reflect .env.local overrides when expanding ${...}.
+
+  All `docker compose` calls now conditionally pass a second --env-file:
+    --env-file config/.env.local  (only if file exists)
+  This feeds .env.local values into compose ${...} substitutions
+  (ports mapping, build args, etc.).
+
+docker/docker-compose.yml:
+  Removed BRAIN_API_PORT and BRAIN_METRICS_PORT from the brain service
+  `environment:` block. They come from env_file now, not hardcoded.
+
+── Result ────────────────────────────────────────────────────────────────────
+
+Priority is now correctly enforced at every layer:
+  .env.local > .env > built-in defaults
+
+To change any port, put it ONLY in config/.env.local. No other files needed.
+Example .env.local:
+  BRAIN_API_PORT=8080
+  BRAIN_METRICS_PORT=9091
+  FRONTEND_PORT=3100
