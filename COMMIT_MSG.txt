@@ -1,0 +1,53 @@
+v4.7.25 — Fix: .env.local override, version display, price data quality
+
+── Fix 1: .env.local properly overrides .env in Docker ──────────────────────
+
+ROOT CAUSE: Docker's `env_file:` injects variables as real process env vars
+before Python starts. `load_dotenv(override=True)` in loader.py cannot
+override real env vars — it only sets vars that aren't already set.
+So .env.local values were silently ignored for any var already in .env.
+
+FIX: docker-compose.yml now declares two env_file entries for brain and
+worker_manager — .env first, then .env.local (required: false).
+Docker processes them in order, so .env.local wins for any shared key.
+You only need to maintain .env.local for your personal config.
+
+── Fix 2: Version displays full string (e.g. 4.7.25, not 4.7) ──────────────
+
+The header had `ARBX v4.7` hardcoded. Replaced with <VersionTag /> component
+that fetches /api/system on mount and displays the live version string.
+
+── Fix 3: Price data quality filter ─────────────────────────────────────────
+
+market_state.update_price() now validates every incoming price:
+
+  1. Zero/null rejection: prices <= 0 are discarded and logged on first
+     occurrence per exchange:pair.
+
+  2. Outlier rejection: if a new price deviates by more than
+     PRICE_OUTLIER_THRESHOLD× (default 10x) from the median of existing
+     prices for that pair, it is rejected. This catches the unit mismatch
+     problem seen in the screenshot:
+       AAVE/BTC: Kraken=0.0014  WhiteBit=100.28  → ratio=71,628×  REJECTED
+       THETA/BTC: Binance=0     → zero price      REJECTED
+
+     Root cause of anomalies: some exchanges return prices in BTC units,
+     others normalise to USDT. The filter rejects the outlier regardless
+     of which is "correct" — keeping only the cluster that agrees.
+
+  3. New endpoint: GET /api/market/rejected
+     Shows all rejected price counts per exchange:pair for diagnostics.
+
+  4. New "Filtered" card in Market Feed summary — shows total rejections
+     in orange when active, confirming the filter is working.
+
+  Configurable via: PRICE_OUTLIER_THRESHOLD=10.0 in .env or .env.local
+
+── Files changed ─────────────────────────────────────────────────────────────
+  MOD  docker/docker-compose.yml          .env.local as second env_file
+  MOD  frontend/src/App.jsx               VersionTag component (dynamic)
+  MOD  storage/market_state.py            price validation + rejection tracking
+  MOD  api/routes/market.py               GET /api/market/rejected endpoint
+  MOD  frontend/src/components/MarketFeed.jsx  Filtered stat card
+  MOD  config/.env                        PRICE_OUTLIER_THRESHOLD=10.0
+  MOD  VERSION                            4.7.25
