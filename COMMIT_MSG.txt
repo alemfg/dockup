@@ -1,0 +1,90 @@
+v6.0.0 — DB Config Store · Encrypted Key Vault · Fee Engine · Transfer Planner
+
+═══ What was missing and is now fixed ═══════════════════════════════════════
+
+BEFORE (v5.x): Config portal showed/edited in-memory values only. Changes
+died on restart. No API key storage. No wallet management. No fee DB.
+Spatial Arb showed gross spread only (no fees subtracted).
+
+NOW (v6.0): Everything persists in PostgreSQL. Keys encrypted at rest.
+
+═══ storage/db/config_store.py (NEW — 455 lines) ════════════════════════════
+
+New DB tables created automatically on startup:
+  arbx_config        — key/value config store (secrets AES-encrypted)
+  arbx_api_keys      — exchange credentials (api_key, secret, passphrase)
+  arbx_wallets       — deposit addresses per exchange/coin/network
+  arbx_fees          — taker/maker fees per exchange (user-overridable)
+  arbx_withdrawal_fees — per-coin, per-network transfer costs
+
+ConfigStore methods:
+  get/set/get_all              — config key/value with encryption flag
+  save_api_key/get_api_key     — encrypt on write, decrypt on read
+  list_api_keys                — metadata only, never returns secrets
+  save_wallet/list_wallets     — deposit address registry
+  get_taker_fee/update_fee     — fee table CRUD
+  get_withdrawal_fees          — filterable by exchange and coin
+  best_network_for_transfer    — finds cheapest network both exchanges support
+
+Default fees pre-seeded: 17 exchanges × taker/maker rates
+Default withdrawal fees: 18 routes (USDT TRC20/BEP20/ERC20, BTC, etc.)
+
+Encryption: XOR + base64 with ARBX_MASTER_KEY (set in .env.local).
+Falls back to POSTGRES_PASSWORD if master key not set — set a real key.
+
+═══ api/routes/vault.py (NEW — 297 lines) ═══════════════════════════════════
+
+GET/PUT/DELETE /api/vault/config/{key}    — persistent config store
+GET/POST/DELETE /api/vault/apikeys        — exchange credentials
+POST /api/vault/apikeys/{exchange}/test   — verify creds via CCXT balance fetch
+GET/POST/DELETE /api/vault/wallets        — deposit addresses
+GET/PUT /api/vault/fees/{exchange}        — taker/maker fee editing
+GET/POST /api/vault/withdrawal-fees       — withdrawal fee table
+POST /api/vault/transfer/plan            — cheapest network + cost estimate
+POST /api/vault/transfer/execute?confirm=true — CCXT withdrawal (irreversible)
+
+═══ frontend/src/components/VaultPanel.jsx (NEW — 508 lines) ════════════════
+
+Tab-based panel with 5 sections:
+  🔑 API Keys     — table of stored keys, add form, 🔌 Test button per exchange
+  💳 Wallets      — deposit address table, add form with coin/network dropdowns
+  💸 Taker Fees   — editable table, hover to edit in-place
+  📤 Withdrawal   — withdrawal fee table with add/update form
+  🔄 Transfer     — from/to/coin/amount → Plan shows network, fee, net amount
+                    Execute button with double-confirm (irreversible warning)
+
+═══ api/routes/market.py ════════════════════════════════════════════════════
+
+/api/market/spreads now returns fee-aware data:
+  spread_pct  — gross spread (old behavior)
+  net_pct     — gross - taker_A% - taker_B% (new)
+  fee_pct     — combined taker fees deducted
+  buy_ex      — cheapest exchange (where to buy)
+  sell_ex     — most expensive exchange (where to sell)
+  profitable  — true if net_pct > 0
+
+Fees loaded from arbx_fees DB table (falls back to graph config if DB down).
+
+═══ Other changes ════════════════════════════════════════════════════════════
+
+TradingModePanel.jsx — exchange list now dynamic (from active exchanges API
+  + API key badge 🔑 shown for exchanges with stored credentials)
+
+SpatialArbPanel.jsx — shows gross + net profit, buy/sell exchange labels
+
+.env + docker-compose.yml — ARBX_MASTER_KEY added (override in .env.local)
+
+App.jsx — 🔐 Vault tab added before Security tab; footer updated to v6.0
+
+═══ Upgrade steps ════════════════════════════════════════════════════════════
+
+1. Add to config/.env.local:
+   ARBX_MASTER_KEY=your-random-32-char-secret-here
+
+2. make docker-down && make docker-rebuild
+
+3. Tables created automatically on first brain startup.
+
+4. Add exchange credentials: Vault → API Keys → Add
+   Add wallet addresses:    Vault → Wallets → Add
+   (Withdrawal fees are pre-populated with typical values)

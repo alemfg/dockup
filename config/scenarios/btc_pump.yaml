@@ -1,0 +1,27 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Scenario: BTC Pump
+# Simulates a sudden BTC price spike on Binance with Kraken lagging behind.
+# Should trigger: spatial arbitrage opportunity (BTC/USDT)
+# Expected: opportunity score > 0.6, confidence MEDIUM or HIGH
+# ─────────────────────────────────────────────────────────────────────────────
+name: btc_pump
+description: >
+  BTC pumps 5% on Binance instantly. Kraken lags 2 minutes.
+  Expect: spread of ~2% between exchanges, spatial arb triggered.
+
+ticks:
+  # Baseline — both exchanges at same price
+  - { exchange: binance, pair: BTC/USDT, price: 65000, note: "baseline" }
+  - { exchange: kraken,  pair: BTC/USDT, price: 65000, note: "baseline" }
+
+  # Pump hits Binance first
+  - { exchange: binance, pair: BTC/USDT, price: 68000, delay_ms: 500, note: "pump +4.6%" }
+
+  # Kraken still at old price — spread is now ~4.4%
+  - { exchange: kraken,  pair: BTC/USDT, price: 65000, delay_ms: 100, note: "kraken lagging" }
+
+  # Repeat a few times so analysis engine builds signal
+  - { exchange: binance, pair: BTC/USDT, price: 68100, delay_ms: 200 }
+  - { exchange: kraken,  pair: BTC/USDT, price: 65050, delay_ms: 200 }
+  - { exchange: binance, pair: BTC/USDT, price: 68050, delay_ms: 200 }
+  - { exchange: kraken,  pair: BTC/USDT, price: 65100, delay_ms: 200 }

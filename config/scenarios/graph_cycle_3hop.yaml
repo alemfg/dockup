@@ -1,0 +1,27 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Scenario: Triangular Graph Cycle
+# Injects prices that form a profitable 3-hop cycle on Binance.
+# USDT → BTC → ETH → USDT
+# Should trigger: graph arbitrage path detection
+# ─────────────────────────────────────────────────────────────────────────────
+name: graph_cycle_3hop
+description: >
+  Creates a profitable triangular cycle on Binance.
+  USDT->BTC->ETH->USDT product > 1.0 after fees.
+  ETH/USDT is priced slightly high vs BTC/USDT cross rate.
+
+ticks:
+  # Leg 1: USDT → BTC  (buy BTC at 65000)
+  - { exchange: binance, pair: BTC/USDT,  price: 65000, note: "leg1" }
+
+  # Leg 2: BTC → ETH   (buy ETH with BTC at 0.04920 = ETH is cheap in BTC terms)
+  - { exchange: binance, pair: ETH/BTC,   price: 0.04920, note: "leg2 cheap ETH" }
+
+  # Leg 3: ETH → USDT  (sell ETH at 3210 = ETH is expensive in USDT terms)
+  # Cross rate would be: 65000 × 0.04920 = 3198 USDT
+  # But we're injecting 3210 — that's the inefficiency (0.37% profit before fees)
+  - { exchange: binance, pair: ETH/USDT,  price: 3210, note: "leg3 expensive ETH" }
+
+  # Extra pairs to fill out the graph
+  - { exchange: kraken,  pair: BTC/USDT,  price: 65050 }
+  - { exchange: kraken,  pair: ETH/USDT,  price: 3208  }
