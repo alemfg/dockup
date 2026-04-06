@@ -313,7 +313,7 @@ async def patch_config(body: ConfigPatchRequest, request: Request):
 
     # Persist to DB so change survives restarts
     try:
-        cs = request.app.state.brain.persistence.config_store
+        cs = getattr(request.app.state, "api_config_store", None)              or request.app.state.brain.persistence.config_store
         if cs and cs._pool:
             await cs.set(f"{body.section}.{body.key}", body.value,
                          category=body.section, description=f"Patched via portal")

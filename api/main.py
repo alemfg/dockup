@@ -25,8 +25,25 @@ def create_app(brain: "Brain") -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("API server started.")
+        # Create a dedicated asyncpg pool for the API's own event loop.
+        # The brain's pool lives on a different loop and cannot be shared.
+        try:
+            import asyncpg
+            from storage.db.config_store import ConfigStore
+            app.state.api_pool = await asyncpg.create_pool(
+                brain.config.postgres.dsn, min_size=1, max_size=4
+            )
+            app.state.api_config_store = ConfigStore(app.state.api_pool)
+            await app.state.api_config_store.init()
+            logger.info("API DB pool ready")
+        except Exception as exc:
+            logger.warning(f"API DB pool unavailable: {exc}")
+            app.state.api_pool = None
+            app.state.api_config_store = None
         yield
         logger.info("API server stopped.")
+        if getattr(app.state, "api_pool", None):
+            await app.state.api_pool.close()
 
     app = FastAPI(
         title="ArbitrageEngine v2 API",

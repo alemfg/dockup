@@ -15,6 +15,14 @@ from pydantic import BaseModel
 router = APIRouter(tags=["Balances"])
 
 
+def _cs(request: Request):
+    """Config store using the API's own event-loop pool where possible."""
+    cs = getattr(request.app.state, "api_config_store", None)
+    if cs is not None and cs._pool is not None:
+        return cs
+    return request.app.state.brain.persistence.config_store
+
+
 # ── Balance read endpoints ────────────────────────────────────────────────────
 
 @router.get("/balances")
@@ -91,7 +99,7 @@ class TargetAllocation(BaseModel):
 @router.get("/balances/targets")
 async def get_targets(request: Request):
     """Load saved target allocations from DB config store."""
-    cs = request.app.state.brain.persistence.config_store
+    cs = _cs(request)
     if cs is None:
         return {"targets": {}}
     targets = await cs.get("balance.targets", default={})
@@ -104,7 +112,7 @@ async def save_targets(body: TargetAllocation, request: Request):
     total = sum(body.targets.values())
     if abs(total - 100.0) > 2.0:
         raise HTTPException(400, f"Targets must sum to ~100% (got {total:.1f}%)")
-    cs = request.app.state.brain.persistence.config_store
+    cs = _cs(request)
     if cs is None:
         raise HTTPException(503, "Config store not available")
     await cs.set("balance.targets", body.targets, category="balances",
@@ -128,7 +136,7 @@ async def suggest_rebalance(body: RebalanceRequest, request: Request):
     """
     brain = request.app.state.brain
     ms    = brain.market_state
-    cs    = brain.persistence.config_store
+    cs    = getattr(request.app.state, 'api_config_store', None) or brain.persistence.config_store
 
     # Load targets from DB if not provided
     target_pct = body.target_pct
@@ -195,7 +203,7 @@ async def execute_rebalance_transfer(body: TransferApproval, request: Request):
         raise HTTPException(400, "confirm=true required. Transfers are irreversible.")
 
     brain = request.app.state.brain
-    cs    = brain.persistence.config_store
+    cs    = getattr(request.app.state, 'api_config_store', None) or brain.persistence.config_store
     if cs is None:
         raise HTTPException(503, "Config store not available")
 

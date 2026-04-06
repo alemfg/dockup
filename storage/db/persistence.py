@@ -109,6 +109,10 @@ class PersistenceLayer:
     async def start(self) -> None:
         try:
             import asyncpg
+            # Log masked DSN for diagnostics (hides password)
+            import re
+            masked = re.sub(r"://([^:]+):([^@]+)@", r"://\1:***@", self._dsn)
+            logger.info(f"Connecting to PostgreSQL: {masked}")
             self._pool = await asyncpg.create_pool(self._dsn, min_size=2, max_size=8)
             await self._create_tables()
             # Initialise config store with same pool
@@ -119,7 +123,7 @@ class PersistenceLayer:
             asyncio.create_task(self._write_loop(), name="db_writer")
             logger.info("PostgreSQL persistence layer started")
         except Exception as exc:
-            logger.warning(f"PostgreSQL unavailable — running without persistence: {exc}")
+            logger.error(f"PostgreSQL unavailable — running without persistence: {exc!r}")
             self._ready = False
             # Provide a null config store so code doesn't have to check
             from storage.db.config_store import ConfigStore

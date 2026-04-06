@@ -115,8 +115,24 @@ async def place_order(body: ManualOrderRequest, request: Request):
     # Record in order log
     brain.order_log.record_command(cmd)
 
-    # Publish to execution queue
-    await brain.bus.publish_order_command(cmd)
+    # Publish to execution queue.
+    # The brain's bus lives on its own event loop (separate thread from the API).
+    # Submit the coroutine to the brain's loop rather than awaiting it here.
+    main_loop = getattr(brain, "_main_loop", None)
+    if main_loop and main_loop.is_running():
+        import concurrent.futures
+        fut = asyncio.run_coroutine_threadsafe(
+            brain.bus.publish_order_command(cmd), main_loop
+        )
+        try:
+            fut.result(timeout=5)
+        except concurrent.futures.TimeoutError:
+            raise HTTPException(503, "Order bus timeout — brain loop may be busy")
+        except Exception as exc:
+            raise HTTPException(503, f"Order publish failed: {exc}")
+    else:
+        # Fallback: same-loop execution (dev mode / tests)
+        await brain.bus.publish_order_command(cmd)
 
     return {
         "ok":      True,

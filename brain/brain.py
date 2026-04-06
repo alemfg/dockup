@@ -83,6 +83,7 @@ class Brain:
         self.stream_sub._persistence = self.persistence
 
         self._shutdown_event = asyncio.Event()
+        self._main_loop      = None   # set in start() — used by API thread
 
     def _setup_signals(self) -> None:
         loop = asyncio.get_event_loop()
@@ -161,6 +162,8 @@ class Brain:
     async def start(self) -> None:
         self._setup_signals()
         self._print_banner()
+        # Store main event loop so API thread can submit coroutines to it
+        self._main_loop = asyncio.get_event_loop()
         await self.bus.connect()
         await self.alert_sender.start()
         await self.persistence.start()

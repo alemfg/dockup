@@ -95,7 +95,8 @@ async def _spawn(worker_id: str, env_vars: dict) -> str:
     """Build env list and spawn container. Returns container ID or ''."""
     base = _load_env_file(_ENV_FILE)
     base.update(_load_env_file(_ENV_LOCAL_FILE))
-    base.update({k: v for k, v in env_vars.items() if v})
+    # env_vars from spawn message take priority — filter out empty strings
+    base.update({k: v for k, v in env_vars.items() if v is not None and str(v).strip()})
     env_list = [f"{k}={v}" for k, v in base.items()]
 
     logger.info(f"Spawning {worker_id} | image={WORKER_IMAGE} | network={WORKER_NETWORK} | pairs={env_vars.get('PAIRS','?')[:60]}")

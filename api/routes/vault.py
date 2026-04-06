@@ -17,11 +17,21 @@ router = APIRouter(tags=["Vault"])
 
 
 def _cs(request: Request):
-    """Get config_store from brain.persistence."""
+    """
+    Get config_store for the current request.
+    Uses the API's own asyncpg pool (created in the API's event loop) so it
+    never crosses event-loop boundaries with the brain's pool.
+    Falls back to the brain's pool if the API pool isn't ready yet.
+    """
+    # Preferred: API's own pool (same event loop as the route handlers)
+    cs = getattr(request.app.state, "api_config_store", None)
+    if cs is not None and cs._pool is not None:
+        return cs
+    # Fallback: brain's pool (may work if both share the same loop in tests)
     cs = request.app.state.brain.persistence.config_store
-    if cs is None or cs._pool is None:
-        raise HTTPException(503, "Config store not available — PostgreSQL may be down")
-    return cs
+    if cs is not None and cs._pool is not None:
+        return cs
+    raise HTTPException(503, "Config store not available — PostgreSQL may be down")
 
 
 # ── Config store ──────────────────────────────────────────────────────────────
