@@ -8,7 +8,7 @@
  */
 import React, { useState } from 'react'
 import { usePolling } from '../utils/api'
-import { useSortable } from '../utils/useSortable'
+import { useSortable } from '../utils/useSortable.jsx'
 import { Card, Spinner } from './ui'
 
 const api = (path, opts = {}) =>

@@ -12,7 +12,7 @@ import {
   fetchBalanceTargets, saveBalanceTargets,
   suggestRebalance, executeRebalance,
 } from '../utils/api'
-import { useSortable } from '../utils/useSortable'
+import { useSortable } from '../utils/useSortable.jsx'
 import { Card, EmptyState, Spinner } from './ui'
 
 const EXCHANGE_COLORS = {

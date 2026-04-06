@@ -4,7 +4,7 @@
  */
 import React, { useState } from 'react'
 import { usePolling, fetchOpenOrders, fetchOrderLog } from '../utils/api'
-import { useSortable } from '../utils/useSortable'
+import { useSortable } from '../utils/useSortable.jsx'
 import { Card, EmptyState, Spinner } from './ui'
 
 const SECTIONS = [
