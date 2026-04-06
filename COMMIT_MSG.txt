@@ -1,0 +1,65 @@
+arbx v6.4 — Per-exchange rate limit management + Spatial Arb diagnostics
+
+RATE LIMIT SYSTEM (worker/rate_limit.py — new file)
+────────────────────────────────────────────────────
+• RateLimitGuard: token-bucket + exponential back-off per worker
+  - Token bucket seeded from per-exchange RPM table (Binance=600, Kraken=40, …)
+  - Tokens consumed before every fetch_ticker() call — blocks if budget exhausted
+  - On 429: exponential back-off starting at 5s, doubles each consecutive 429,
+    capped at 120s; halves after each successful request
+  - Runtime throttle: brain can push set_tick_interval command to slow a worker
+    without killing it
+• max_workers_for_exchange() helper: calculates safe worker count from RPM budget,
+  pairs-per-worker, and tick interval — used by AutoSpawner at spawn time
+• Per-exchange RPM overrides via env: BINANCE_RATE_LIMIT_RPM=400 etc.
+
+AUTOSPAWNER (brain/auto_spawner.py)
+─────────────────────────────────────
+• _build_plan() now applies rate-limit cap BEFORE spawning:
+  if naive pair-split would exceed the IP budget, slices are merged down to
+  max_workers_for_exchange() chunks — pairs still fully covered, fewer workers
+• Logs a WARNING with exact numbers when the cap fires, including the override hint
+
+WORKER (worker/worker.py)
+──────────────────────────
+• RateLimitGuard integrated into _fetch_price():
+  acquire() called before every live request, on_success() on clean return,
+  on_rate_limited() on 429/rate-limit exception
+• set_tick_interval command handler: brain can throttle a specific exchange's
+  workers at runtime without restart
+• _reload_config() syncs rate guard tick interval when config reloads
+• Heartbeat now includes rate_limit status block (rpm_limit, tokens_available,
+  backoff_s, consecutive_429s, total_requests, total_throttled, total_429s)
+
+API (api/routes/workers.py)
+────────────────────────────
+• POST /api/workers/throttle — broadcast set_tick_interval to all workers
+  on a given exchange (per-exchange, does not affect other exchanges)
+• GET  /api/workers/rate-limits — aggregate rate-limit status by exchange
+  from heartbeat data; derives status: ok / warning / recovering / throttled
+
+MARKET API (api/routes/market.py)
+───────────────────────────────────
+• GET /api/market/spreads now returns diag block:
+  active_exchanges, total_pairs, pairs_with_spread, pairs_single_exchange,
+  single_exchange_examples — consumed by SpatialArbPanel empty state
+
+SPATIAL ARB PANEL (frontend/src/components/SpatialArbPanel.jsx)
+─────────────────────────────────────────────────────────────────
+• DiagEmptyState component: instead of a generic "no data" message, the panel
+  now explains exactly why it's empty:
+  - No workers at all → points to EXCHANGES= config
+  - Only 1 exchange → names it, explains 2+ required
+  - Multiple exchanges but no overlap → lists active exchanges, example pairs,
+    gives PAIRS= config tip
+• RateLimitPanel: live per-exchange rate-limit monitor embedded in the panel
+  - Shows rpm_limit, worker count, total requests, throttled count, 429 count
+  - Back-off duration shown in red when active
+  - "Slow to Xms" button per throttled exchange; auto-shown when 429s detected
+  - 4th summary card (>2% gross) turns red and shows 429 count when issues exist
+
+PAIRS QUESTION (answered in code)
+───────────────────────────────────
+The spatial arb module analyses ALL pairs that appear on 2+ exchanges simultaneously.
+There is no USDT-only filter. The empty panel was caused by only having Binance workers
+active — spatial arb requires the same pair streamed from at least 2 different exchanges.

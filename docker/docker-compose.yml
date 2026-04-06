@@ -1,0 +1,158 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ARBX v4.7 — Docker Compose
+#
+# ALL PORTS are configurable via environment variables in config/.env
+#
+#   Variable              Default   Service
+#   BRAIN_API_PORT        8000      FastAPI REST + WebSocket
+#   BRAIN_METRICS_PORT    9090      Prometheus scrape endpoint
+#   FRONTEND_PORT         3000      React dashboard (nginx)
+#   REDIS_PORT            6379      Redis message bus
+#   POSTGRES_PORT         5432      PostgreSQL
+#
+# Example — shift all ports by 100:
+#   BRAIN_API_PORT=8100 FRONTEND_PORT=3100 make docker-up
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  arb-net:
+    driver: bridge
+    name: arb-net   # explicit name — prevents Compose from prefixing with project name
+
+volumes:
+  postgres_data:
+  redis_data:
+
+services:
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: arb-redis
+    networks: [arb-net]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes: [redis_data:/data]
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: arb-postgres
+    networks: [arb-net]
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB:       arbitrage
+      POSTGRES_USER:     arbitrage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-arbitrage_secret}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arbitrage"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Brain ──────────────────────────────────────────────────────────────────
+  brain:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        ARBX_VERSION: "${ARBX_VERSION:-4.7.19}"
+        BUILD_DATE: "${BUILD_DATE:-unknown}"
+    container_name: arb-brain
+    networks: [arb-net]
+    ports:
+      - "${BRAIN_API_PORT:-8000}:${BRAIN_API_PORT:-8000}"
+      - "${BRAIN_METRICS_PORT:-9090}:${BRAIN_METRICS_PORT:-9090}"
+    env_file:
+      - ../config/.env
+      - path: ../config/.env.local
+        required: false   # optional — only loaded if file exists
+    environment:
+      REDIS_HOST:         redis
+      ARBX_MASTER_KEY:   "${ARBX_MASTER_KEY:-change-me-to-a-random-32char-secret}"
+      REDIS_PORT:         "6379"
+      POSTGRES_HOST:      postgres
+      POSTGRES_PORT:      "5432"
+    volumes:
+      - ../config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Worker Manager ─────────────────────────────────────────────────────────
+  worker_manager:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker_manager
+      args:
+        ARBX_VERSION: "${ARBX_VERSION:-4.7.19}"
+        BUILD_DATE: "${BUILD_DATE:-unknown}"
+    container_name: arb-worker-manager
+    # uid=0 (root) + gid=987 (docker group on this host).
+    # Numeric uid:gid always overrides the image's USER directive.
+    # This gives the process write access to /var/run/docker.sock.
+    user: "0:987"
+    networks: [arb-net]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../config:/app/config:ro
+    env_file:
+      - ../config/.env
+      - path: ../config/.env.local
+        required: false
+    environment:
+      REDIS_HOST:     redis
+      REDIS_PORT:     "6379"
+      MACHINE_IP:     worker_manager
+      MAX_WORKERS:    "${MAX_WORKERS:-50}"
+      DOCKER_HOST:    "unix:///var/run/docker.sock"
+      WORKER_NETWORK: "arb-net"   # must match the network name: above
+    command: ["python", "-m", "worker_manager.manager"]
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+
+  # ── Worker image (build only — no container runs here) ────────────────────
+  # This service exists solely to build and tag the worker Docker image so
+  # worker-base: builds arbx-worker:latest so worker_manager can spawn from it.
+  # deploy.replicas: 0 means it's built but never started by Compose.
+  worker-base:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+      args:
+        ARBX_VERSION: "${ARBX_VERSION:-4.7.19}"
+        BUILD_DATE: "${BUILD_DATE:-unknown}"
+    image: arbx-worker:latest
+    deploy:
+      replicas: 0
+
+  # ── Frontend ───────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ..
+      dockerfile: Dockerfile.frontend
+      args:
+        BRAIN_API_PORT: "${BRAIN_API_PORT:-8000}"
+    container_name: arb-frontend
+    networks: [arb-net]
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      BRAIN_API_PORT: "${BRAIN_API_PORT:-8000}"
+    depends_on: [brain]
+    restart: unless-stopped
