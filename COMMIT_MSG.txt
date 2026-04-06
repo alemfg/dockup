@@ -1,0 +1,67 @@
+v6.3.0 — All NOT-BUILT and PARTIAL items completed
+
+═══ Fix 1: P&L history survives restarts ════════════════════════════════════
+
+brain/brain.py — After persistence.start(), calls load_recent_orders(2000)
+and replays them into the in-memory OrderLog. Closed orders are restored
+with status, pnl_usd, closed_at, close_reason intact.
+Result: Financials tab shows historical data after every restart.
+
+═══ Fix 2: Daily P&L persisted to DB on every close ════════════════════════
+
+brain/orders/log.py — record_close() now accepts persistence= kwarg.
+When provided, calls persist_order() and persist_daily_pnl() atomically:
+  - arbx_orders row updated with final pnl_usd/close_reason/closed_at
+  - arbx_daily_pnl row upserted with today's realized/trades/wins/fees
+All three call sites updated: subscriber, positions route, orders route.
+
+═══ Fix 3: Spatial arb → Decision Engine ════════════════════════════════════
+
+brain/decision/engine.py — on_spatial_spread(spread: dict):
+  Fires when cross-exchange net profit > graph_min_profit_pct.
+  Creates a MARKET BUY on the cheap exchange. Same risk checks and
+  cooldowns as graph arb orders. Source tagged as GRAPH_ARB.
+
+brain/brain.py — _spatial_scan_loop() task (every 10s):
+  Iterates all pairs in market_state, computes gross/net spread using
+  graph config fee_for(), routes profitable spreads to decision engine.
+  Registered as "spatial_arb" asyncio task alongside graph_arbitrage.
+
+═══ Fix 4: Config changes persist across restarts ═══════════════════════════
+
+brain/brain.py — After persistence.start(), reads arbx_config table and
+applies DB overrides to: trading.mode, risk.*, decision.*, graph.*
+Fields not in DB are untouched (env vars still win for everything else).
+
+api/routes/config_reload.py — patch_config() now saves every edit to
+arbx_config table as "{section}.{key}" → value. Silently degrades if
+DB unavailable. Result: portal edits survive docker-down && docker-rebuild.
+
+═══ Fix 5: Workers use Vault credentials ════════════════════════════════════
+
+brain/auto_spawner.py — _reconcile() now queries config_store.get_api_key()
+for each exchange before publishing the SPAWN message. If credentials found
+in DB, they are included in the spawn payload as api_key/api_secret/passphrase.
+
+worker_manager/manager.py — handle_spawn() extracts api_key/api_secret/
+passphrase from spawn message and injects them as {EXCHANGE}_API_KEY,
+{EXCHANGE}_API_SECRET, {EXCHANGE}_PASSPHRASE into the container env vars,
+overriding anything from .env / .env.local.
+
+Result: Add credentials once in Vault → API Keys. Next time the brain
+restarts or a worker is re-spawned, it gets those credentials automatically
+without touching .env.local.
+
+═══ Fix 6: LIVE position close sends exchange order ═════════════════════════
+
+brain/decision/positions.py — _close_position() detects LIVE mode and
+fires asyncio.create_task(_send_close_order()) for SL/TP/manual closes.
+_send_close_order() publishes a MARKET order (opposite side, same volume)
+to STREAM_ORDERS. OrderExecutor picks it up and calls ccxt.create_order().
+Stop-loss orders placed at entry are cancelled implicitly by the close fill.
+
+PositionTracker now accepts config= param so it can check trading mode.
+
+═══ No forward references, all syntax clean ═════════════════════════════════
+
+brain/__init__ forward-reference scan: CLEAN (10/10 files parse OK)

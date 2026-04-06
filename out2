@@ -1,0 +1,248 @@
+
+  ARBX Test Suite — http://localhost:8005
+  2026-04-06 00:37:53
+
+    ✓ Brain API reachable (0.00s)
+    ✓ System status has version (0.00s)
+    ✓ Uptime > 0s (0.00s)
+    ✓ Trading mode present (0.00s)
+    ✓ Fleet workers endpoint responds (0.03s)
+    ✓ At least 1 worker registered (0.00s)
+    ✓ At least 1 healthy worker (0.00s)
+    ✓ Heartbeat stream has messages (0.00s)
+    ✓ Fleet events endpoint (0.03s)
+    ✓ Coverage map endpoint (0.04s)
+    ✓ Market prices endpoint (0.26s)
+    ✓ Price data arriving (>0 pairs) (0.00s)
+    ✓ Spreads endpoint (3.49s)
+    ✓ Spreads have net_pct (fee-adjusted) (0.00s)
+    ✓ Spreads have buy_ex/sell_ex (0.00s)
+    ✓ Rejected prices endpoint (0.05s)
+    ✓ Graph paths endpoint (0.08s)
+    ✓ Graph state endpoint (0.06s)
+    ✓ Graph config endpoint (0.04s)
+    ✓ Graph best path endpoint (0.02s)
+    ✗ Graph has edges (0.00s)
+      0 edges, algo=bellman_ford
+    ✗ Vault endpoint reachable (DB connected) (0.00s)
+      Vault down: HTTP 503: Config store not available — PostgreSQL may be down — PostgreSQL may be unavailable
+    ⊘ Wallets endpoint (skipped: Vault unavailable)
+    ⊘ Fee tables (skipped: Vault unavailable)
+    ✓ Config current endpoint (0.04s)
+    ✓ Ports section present (0.00s)
+    ✓ Workers section present (0.00s)
+    ✓ Risk section present (0.00s)
+    ✓ Graph section present (0.00s)
+    ✓ Alerts section present (0.00s)
+    ✗ Config patch accepted (0.00s)
+      HTTP 422: [{'type': 'missing', 'loc': ['query', 'body'], 'msg': 'Field required', 'input': None}] | None
+    ✓ Supported exchanges list (0.02s)
+    ✓ CCXT exchange list has ≥50 entries (0.00s)
+    ✓ Active exchanges endpoint (0.03s)
+    ✓ Trading mode endpoint (0.04s)
+    ✓ Trading status endpoint (0.04s)
+    ✓ Trading mode is valid (0.00s)
+    ✓ Can switch to simulate mode (0.00s)
+    ✓ Can switch back to disabled (0.00s)
+    ✓ Live mode requires confirm=true (0.00s)
+    ✓ Place simulate order (0.00s)
+    ✓ Order appears in order log within 5s (0.00s)
+    ✓ Order log endpoint (0.04s)
+    ✓ Daily P&L endpoint (0.04s)
+    ✓ Decision engine stats present (0.00s)
+    ✓ Cancel or confirm order processed (0.00s)
+    ✓ Open positions endpoint (0.04s)
+    ✓ Closed positions endpoint (0.04s)
+    ✓ Position daily P&L endpoint (0.02s)
+    ✓ Financial summary endpoint (0.02s)
+    ✓ Summary has orders section (0.00s)
+    ✓ Summary has positions section (0.00s)
+    ✓ Summary has balance_usd (0.00s)
+    ✓ Financial trades endpoint (0.01s)
+    ✓ Financial daily P&L endpoint (0.01s)
+    ✓ Risk status endpoint (0.03s)
+    ✓ Not halted at startup (0.00s)
+    ✓ Daily loss tracker present (0.00s)
+    ✓ Risk config endpoint (0.04s)
+    ✓ Decision config endpoint (0.05s)
+    ✓ Risk config live-editable via PATCH (0.00s)
+    ✓ Balances endpoint (0.04s)
+    ✓ Balance summary endpoint (0.04s)
+    ✓ P&L section in summary (0.00s)
+    ✓ Balance targets endpoint (0.04s)
+    ✓ Can save balance targets (0.00s)
+    ✓ Rebalance suggest endpoint (0.00s)
+    ⊘ Transfer planner (skipped: Vault unavailable)
+    ✓ Alerts test endpoint responds (0.00s)
+    ✓   ntfy test endpoint responds (0.00s)
+    ✓   slack test endpoint responds (0.00s)
+    ✓   discord test endpoint responds (0.00s)
+    ✓   telegram test endpoint responds (0.00s)
+    ✓   email test endpoint responds (0.00s)
+    ✓   webhook test endpoint responds (0.00s)
+    ✓ CR signals endpoint (0.05s)
+    ✓ CR state endpoint (0.04s)
+    ✗ CR force-active works (0.00s)
+      no response
+    ✓ Logs endpoint (0.02s)
+    ✓ Log entries have required fields (0.00s)
+    ✓ Error log filter works (0.00s)
+    ✓ Events endpoint (0.01s)
+    ✓   Category filter: ARBIT (0.00s)
+    ✓   Category filter: TRADE (0.00s)
+    ✓   Category filter: SYSTEM (0.00s)
+    ✓   Category filter: RISK (0.00s)
+    ✓ Inject single tick (0.00s)
+    ✓ Inject spread scenario (0.00s)
+    ✓ Injector status endpoint (0.00s)
+    ✓ Injector reset works (0.00s)
+    ✓ Brain config reload (0.00s)
+    ✓ Workers config reload (0.00s)
+
+════════════════════════════════════════════════════════════════════
+  ARBX Test Report
+════════════════════════════════════════════════════════════════════
+
+  ✓ 0 · Connectivity  4 passed
+    ✓ Brain API reachable  OK
+    ✓ System status has version  v6.3.0
+    ✓ Uptime > 0s  1531.5s
+    ✓ Trading mode present  disabled
+
+  ✓ 1 · Fleet & Workers  6 passed
+    ✓ Fleet workers endpoint responds  OK
+    ✓ At least 1 worker registered  1 workers
+    ✓ At least 1 healthy worker  1/1 healthy
+    ✓ Heartbeat stream has messages  304 messages in stream
+    ✓ Fleet events endpoint  OK
+    ✓ Coverage map endpoint  OK
+
+  ✓ 2 · Market Data  6 passed
+    ✓ Market prices endpoint  OK
+    ✓ Price data arriving (>0 pairs)  1990 pairs tracked
+    ✓ Spreads endpoint  OK
+    ✓ Spreads have net_pct (fee-adjusted)  0 spreads, 0 profitable after fees
+    ✓ Spreads have buy_ex/sell_ex  Route info present
+    ✓ Rejected prices endpoint  OK
+
+  ✗ 3 · Graph Arbitrage  4 passed  1 failed
+    ✓ Graph paths endpoint  OK
+    ✓ Graph state endpoint  OK
+    ✓ Graph config endpoint  OK
+    ✓ Graph best path endpoint  OK
+    ✗ Graph has edges
+      → 0 edges, algo=bellman_ford
+
+  ✗ 4 · Vault · API Keys  0 passed  1 failed
+    ✗ Vault endpoint reachable (DB connected)
+      → Vault down: HTTP 503: Config store not available — PostgreSQL may be down — PostgreSQL may be unavailable
+
+  ✓ 5 · Vault · Wallets  0 passed  1 skipped
+    ⊘ Wallets endpoint  — Vault unavailable
+
+  ✓ 6 · Vault · Fees  0 passed  1 skipped
+    ⊘ Fee tables  — Vault unavailable
+
+  ✗ 7 · Config Persistence  9 passed  1 failed
+    ✓ Config current endpoint  OK
+    ✓ Ports section present  ports in config
+    ✓ Workers section present  workers in config
+    ✓ Risk section present  risk in config
+    ✓ Graph section present  graph in config
+    ✓ Alerts section present  alerts in config
+    ✗ Config patch accepted
+      → HTTP 422: [{'type': 'missing', 'loc': ['query', 'body'], 'msg': 'Field required', 'input': None}] | None
+    ✓ Supported exchanges list  OK
+    ✓ CCXT exchange list has ≥50 entries  110 exchanges from CCXT
+    ✓ Active exchanges endpoint  OK
+
+  ✓ 8 · Trading Mode  6 passed
+    ✓ Trading mode endpoint  OK
+    ✓ Trading status endpoint  OK
+    ✓ Trading mode is valid  mode = disabled
+    ✓ Can switch to simulate mode  simulate mode set
+    ✓ Can switch back to disabled  disabled mode restored
+    ✓ Live mode requires confirm=true  guard working
+
+  ✓ 9 · Order Execution  6 passed
+    ✓ Place simulate order  order_id=76159ed8
+    ✓ Order appears in order log within 5s  status=?
+    ✓ Order log endpoint  OK
+    ✓ Daily P&L endpoint  OK
+    ✓ Decision engine stats present  total_decisions=0
+    ✓ Cancel or confirm order processed  already filled/processed
+
+  ✓ 10 · Positions & P&L  3 passed
+    ✓ Open positions endpoint  OK
+    ✓ Closed positions endpoint  OK
+    ✓ Position daily P&L endpoint  OK
+
+  ✓ 11 · Financials  6 passed
+    ✓ Financial summary endpoint  OK
+    ✓ Summary has orders section  orders present
+    ✓ Summary has positions section  positions present
+    ✓ Summary has balance_usd  $0.02
+    ✓ Financial trades endpoint  OK
+    ✓ Financial daily P&L endpoint  OK
+
+  ✓ 12 · Risk Manager  6 passed
+    ✓ Risk status endpoint  OK
+    ✓ Not halted at startup  not halted
+    ✓ Daily loss tracker present  $0.0 today
+    ✓ Risk config endpoint  OK
+    ✓ Decision config endpoint  OK
+    ✓ Risk config live-editable via PATCH  max_daily_loss updated
+
+  ✓ 13 · Balances  6 passed
+    ✓ Balances endpoint  OK
+    ✓ Balance summary endpoint  OK
+    ✓ P&L section in summary  realized=$0.00
+    ✓ Balance targets endpoint  OK
+    ✓ Can save balance targets  targets saved
+    ✓ Rebalance suggest endpoint  0 suggestions
+
+  ✓ 14 · Transfer Planner  0 passed  1 skipped
+    ⊘ Transfer planner  — Vault unavailable
+
+  ✓ 15 · Alerts  7 passed
+    ✓ Alerts test endpoint responds  Sent to: ntfy
+    ✓   ntfy test endpoint responds  Task <Task pending name='Task-680' coro=<TCPConnector._resol
+    ✓   slack test endpoint responds  Slack not configured (SLACK_WEBHOOK_URL missing)
+    ✓   discord test endpoint responds  Discord not configured (DISCORD_WEBHOOK_URL missing)
+    ✓   telegram test endpoint responds  Telegram not configured (TELEGRAM_BOT_TOKEN missing)
+    ✓   email test endpoint responds  Email not configured (EMAIL_SMTP_HOST missing)
+    ✓   webhook test endpoint responds  Webhook not configured (WEBHOOK_URL missing)
+
+  ✗ 16 · 9AM CR Model  2 passed  1 failed
+    ✓ CR signals endpoint  OK
+    ✓ CR state endpoint  OK
+    ✗ CR force-active works
+      → no response
+
+  ✓ 17 · Log Viewer  3 passed
+    ✓ Logs endpoint  OK
+    ✓ Log entries have required fields  10 log entries in buffer
+    ✓ Error log filter works  filter accepted
+
+  ✓ 18 · Financial Events  5 passed
+    ✓ Events endpoint  OK
+    ✓   Category filter: ARBIT  0 ARBIT events
+    ✓   Category filter: TRADE  0 TRADE events
+    ✓   Category filter: SYSTEM  5 SYSTEM events
+    ✓   Category filter: RISK  0 RISK events
+
+  ✓ 19 · Price Injection  4 passed
+    ✓ Inject single tick  OK
+    ✓ Inject spread scenario  OK
+    ✓ Injector status endpoint  OK
+    ✓ Injector reset works  Graph and injector state cleared.
+
+  ✓ 20 · Hot Reload  2 passed
+    ✓ Brain config reload  Brain config reloaded from disk.
+    ✓ Workers config reload  Reload command sent to 1 workers.
+
+════════════════════════════════════════════════════════════════════
+  FAILURES DETECTED   15.3s elapsed
+  Total: 92   85 passed   4 failed   3 skipped
+════════════════════════════════════════════════════════════════════
+

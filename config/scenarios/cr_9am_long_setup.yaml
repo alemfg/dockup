@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Scenario: 9AM CR Model Setup
+# Injects the candles and price sequence needed to trigger a CR long setup.
+# Should produce: CRSignal with direction=long, score >= 0.55
+#
+# Sequence:
+#   1. 8AM 1H candle  (HTF range)
+#   2. 9AM 15M candle (LTF range)
+#   3. 1M candles showing: low sweep → BOS → FVG
+# ─────────────────────────────────────────────────────────────────────────────
+name: cr_9am_long_setup
+description: >
+  Full 9AM CR model long setup for BTC/USDT.
+  HTF: 8AM high=65500, low=64000
+  LTF: 9AM high=65100, low=64800
+  Sweep: price wicks to 64780 then recovers
+  Expected: CRSignal direction=long, TP1=65100, TP2=65500
+
+candles:
+  # HTF — 8:00 AM 1H candle
+  - exchange:   binance
+    pair:       BTC/USDT
+    timeframe:  1H
+    open:       64200
+    high:       65500
+    low:        64000
+    close:      65100
+    time:       "2026-03-23T08:00:00"
+
+  # LTF — 9:00 AM 15M candle
+  - exchange:   binance
+    pair:       BTC/USDT
+    timeframe:  15M
+    open:       65000
+    high:       65100
+    low:        64800
+    close:      64950
+    time:       "2026-03-23T09:00:00"
+
+  # 1M candles showing sweep below LTF low (64800), then recovery
+  - { exchange: binance, pair: BTC/USDT, timeframe: 1M,
+      open: 64900, high: 64950, low: 64780, close: 64820,
+      time: "2026-03-23T09:05:00" }    # ← sweep! wick below 64800, closes above
+
+  # Post-sweep BOS candles (price breaks above recent high)
+  - { exchange: binance, pair: BTC/USDT, timeframe: 1M,
+      open: 64820, high: 64980, low: 64800, close: 64970,
+      time: "2026-03-23T09:06:00" }
+
+  # FVG forming: c1 high=64980, c2 strong up, c3 low > c1 high
+  - { exchange: binance, pair: BTC/USDT, timeframe: 1M,
+      open: 64970, high: 65080, low: 64960, close: 65060,
+      time: "2026-03-23T09:07:00" }    # c2 — strong
+
+  - { exchange: binance, pair: BTC/USDT, timeframe: 1M,
+      open: 65060, high: 65120, low: 65010, close: 65100,
+      time: "2026-03-23T09:08:00" }    # c3 low (65010) > c1 high (64980) → FVG!
+
+ticks:
+  # Current price in discount zone (below LTF equilibrium 64950)
+  - { exchange: binance, pair: BTC/USDT, price: 64920, note: "in discount zone" }
