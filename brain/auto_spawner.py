@@ -169,9 +169,22 @@ class AutoSpawner:
             pairs_raw = os.getenv(f"{exchange.upper()}_PAIRS", "BTC/USDT,ETH/USDT").strip()
 
             if pairs_raw.upper() == "ALL":
-                # Pass ALL directly to the worker — it will call load_markets() itself
-                self._plan[ex_lower] = [["ALL"]]
-                logger.info(f"[AutoSpawner] {exchange}: PAIRS=ALL → 1 worker (resolves pairs on startup)")
+                # Resolve the full pair list from the exchange, then split by worker_size.
+                # This ensures PAIRS_WORKER_SIZE is respected even with PAIRS=ALL.
+                logger.info(f"[AutoSpawner] {exchange}: PAIRS=ALL — resolving market list...")
+                all_pairs = await _fetch_all_pairs(exchange)
+                if len(all_pairs) <= worker_size:
+                    # Small exchange — single worker is fine
+                    self._plan[ex_lower] = [all_pairs]
+                    logger.info(f"[AutoSpawner] {exchange}: {len(all_pairs)} pairs → 1 worker")
+                else:
+                    chunks = _chunk(all_pairs, worker_size)
+                    self._plan[ex_lower] = chunks
+                    logger.info(
+                        f"[AutoSpawner] {exchange}: {len(all_pairs)} pairs → "
+                        f"{len(chunks)} workers × ~{worker_size} pairs each "
+                        f"(PAIRS_WORKER_SIZE={worker_size})"
+                    )
             else:
                 all_pairs = [p.strip() for p in pairs_raw.split(",") if p.strip()]
                 chunks    = _chunk(all_pairs, worker_size)
