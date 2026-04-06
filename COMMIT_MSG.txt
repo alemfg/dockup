@@ -1,0 +1,74 @@
+arbx v6.5 — Vault tables, sortable columns, sync buttons, Spatial Arb full-range, ntfy fix
+
+VAULT PANEL (frontend/src/components/VaultPanel.jsx — full rewrite)
+─────────────────────────────────────────────────────────────────────
+API Keys table — now shows all information:
+  • Masked key preview (first 4 + last 4 chars, ●●●●●●●● middle)
+  • Secret column (always masked ●●●●●●●●●●●●)
+  • Passphrase indicator (●●●● if set, — if not)
+  • Mode badge: sandbox / live
+  • Created date
+  • Test column: state (idle/testing/ok/error) + tested-at timestamp + truncated message
+  • All columns sortable via useSortable
+  • Add form hidden behind "+ Add API Key" toggle
+
+Wallet Addresses — grouped by exchange, per-asset rows:
+  • Exchanges are collapsible sections showing coin badges in header
+  • Each row: Asset | Network | Address (truncated with copy ⎘ button) | Memo/Tag | Label | Delete
+  • Copy button shows ✓ for 2s after copy
+  • Auto-expands the exchange you just added to
+  • Multiple assets per exchange fully supported
+
+Taker Fees / Withdrawal Fees — both tables now sortable by column click
+
+SORTABLE COLUMNS (frontend/src/utils/useSortable.js — new file)
+─────────────────────────────────────────────────────────────────
+Shared hook used across all table panels:
+  useSortable(rows, defaultCol, defaultDir) → { sorted, SortTh, col, dir }
+  SortTh renders a <th> with ▲/▼/⇅ indicator, click toggles direction
+Applied to: VaultPanel (API Keys, Fees, Withdrawal Fees), OrdersPanel
+  (Open Orders, History), BalancesPanel (ready for future tables)
+
+NTFY / ALERTS BUG FIX (alerts/sender.py)
+──────────────────────────────────────────
+Root cause: _send_ntfy() used self._session bare — when called directly
+from the /alerts/test/{channel} route (bypassing the queue drain loop),
+self._session could be None if start() hadn't been called yet, causing
+AttributeError. Also: data=str was passed instead of data=bytes.
+Fix: added _get_session() helper — creates a temporary one-shot aiohttp
+session when the shared session is None or closed. Every _send_*() method
+now uses this helper and closes the temp session when done. Also fixed
+data=alert["message"].encode() for ntfy POST body.
+
+ORDERS SYNC (api/routes/orders.py + worker/worker.py)
+───────────────────────────────────────────────────────
+• POST /api/orders/sync — broadcasts sync_orders command to all live workers
+• Worker: sync_orders command triggers _order_sync_loop_once() immediately
+• _order_sync_loop_once(): runs one full fetch_open_orders cycle per pair
+• UI: "⟳ Sync from Exchanges" button in Open Orders section header
+• Shows confirmation message for 5s then auto-refreshes
+
+BALANCES SYNC (api/routes/balances.py + worker/worker.py)
+────────────────────────────────────────────────────────────
+• POST /api/balances/sync — broadcasts fetch_balance to all live workers
+• Worker: fetch_balance command calls _fetch_and_publish_balances() immediately
+• UI: "⟳ Sync Balances" button in Balances panel header
+• Shows confirmation message for 5s then auto-refreshes
+
+SPATIAL ARB FULL-RANGE TOGGLE (SpatialArbPanel.jsx + api/routes/market.py)
+─────────────────────────────────────────────────────────────────────────────
+• "⚙ Configured pairs" / "🔮 Full range" toggle button in Controls bar
+• Configured mode: uses /api/market/spreads (respects PAIRS_ALL_QUOTE_FILTER)
+• Full range mode: uses /api/market/all-pairs (all pairs in memory, no filter)
+• Info bar shows: total pairs in memory, pairs with cross-exchange spread
+• Polls at 8s in full-range mode (larger dataset), 5s in configured mode
+• GET /api/market/all-pairs: new backend endpoint, same spread logic but
+  iterates over all pairs in market_state regardless of quote filter
+• usePolling now includes fetchFn in deps so toggling the fetcher takes
+  effect immediately without needing a page refresh
+
+usePolling FIX (frontend/src/utils/api.js)
+───────────────────────────────────────────
+Added fetchFn to the useEffect dependency array so polling restarts
+correctly when the fetcher function changes (e.g. full-range toggle).
+Also resets loading=true on each new fetch cycle.

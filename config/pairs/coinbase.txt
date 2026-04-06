@@ -1,0 +1,6 @@
+# ARBX — Coinbase pairs
+BTC/USDT
+ETH/USDT
+SOL/USDT
+AVAX/USDT
+LINK/USDT
