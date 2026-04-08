@@ -1,0 +1,76 @@
+arbx v6.8 — Listings monitor, config export/import, DB backup, log fix, sort fix
+
+LOG VIEWER FIX (api/routes/websocket.py + LogViewerPanel.jsx)
+──────────────────────────────────────────────────────────────
+Root cause: /ws/logs was registered under log_viewer router with prefix /api,
+making the full path /api/ws/logs. FastAPI WebSocket routes under include_router
+with a prefix don't correctly receive WebSocket Upgrade headers through nginx.
+Fix: Added /ws/logs directly to websocket.py (no prefix), same pattern as
+/ws/fleet, /ws/market, /ws/signals. Frontend updated from /api/ws/logs → /ws/logs.
+The log viewer now connects immediately and streams live.
+
+SORT FIX (frontend/src/utils/useSortable.jsx)
+─────────────────────────────────────────────
+Root cause: toggle() was recreated on every render without useCallback.
+Components receiving toggle as a prop saw a new function reference each render,
+causing React to treat it as a new component and reset interaction state.
+Additionally the ⇅ indicator was hard to see — made active column indigo.
+Fix: Wrapped toggle() in useCallback(fn, []) for a stable reference across renders.
+Also fixed the direction flip: now uses setCol functional form to read prev value,
+ensuring correct same-column flip vs new-column reset logic.
+
+NEW LISTINGS MONITOR (brain/listing_monitor.py + api/routes/listings.py)
+──────────────────────────────────────────────────────────────────────────
+New module tracking exchange listing premiums — the highest-spread arb opportunity:
+  - CoinGecko "recently added" API polled every 30min (free, no key needed)
+  - Auto-adds tokens to watchlist when seen on active workers
+  - Scans MarketState prices for cross-exchange premiums every 5min
+  - Alerts when spread exceeds LISTING_ALERT_THRESHOLD_PCT (default 5%)
+  - Tracks listing age (hours since listing date) for context
+  - Computes capital needed for $100 profit per opportunity
+
+Frontend (ListingsPanel.jsx):
+  - Opportunities tab: sorted by spread, shows buy/sell exchange, capital needed
+  - Watchlist tab: add/remove tokens manually with listing date and notes
+  - CoinGecko tab: browse recently added coins, force refresh button
+  - 4 summary cards: watched count, >5%, >10%, >20% spread
+
+Config: LISTING_POLL_INTERVAL_S=300, LISTING_ALERT_THRESHOLD_PCT=5.0
+
+CONFIG EXPORT / IMPORT (api/routes/system_mgmt.py + SystemPanel.jsx)
+──────────────────────────────────────────────────────────────────────
+GET  /api/system/config/export → downloads arbx_config_TIMESTAMP.json
+  Includes: trading, risk, decision, graph, worker, alert settings + safe env vars
+  Excludes: API keys, webhook URLs, passwords, ARBX_MASTER_KEY (never exported)
+
+POST /api/system/config/import → applies exported config to live brain
+  dry_run=true (default): validates only, returns what would be applied
+  dry_run=false: applies risk, decision, graph settings immediately
+  Version compatibility check: warns on mismatched arbx_version
+
+UI: Config JSON downloads directly from browser. Import via file picker.
+Dry-run checkbox defaults to on — shows exactly what would change before applying.
+
+DATABASE BACKUP / RESTORE (api/routes/system_mgmt.py + SystemPanel.jsx)
+─────────────────────────────────────────────────────────────────────────
+GET  /api/system/backup → full pg_dump as .sql.gz (requires pg_dump in container)
+  Includes all tables including encrypted api_keys
+  Restore: gunzip backup.sql.gz | psql -U arbitrage -d arbitrage
+
+GET  /api/system/backup/tables → JSON export of key tables
+  Includes: arbx_config, fee_table, withdrawal_fees, wallet_addresses
+  Excludes: api_keys (encrypted, not useful without master key), order_log (large)
+
+POST /api/system/restore/tables → upsert restore from JSON export
+  Merges into existing data — does not delete existing records
+  Returns row counts per table restored
+
+System panel added to nav as "💾 System" tab.
+Listings panel added to nav as "🆕 Listings" tab (between Spatial Arb and 9AM CR).
+
+NEW FILES:
+  brain/listing_monitor.py
+  api/routes/listings.py
+  api/routes/system_mgmt.py
+  frontend/src/components/ListingsPanel.jsx
+  frontend/src/components/SystemPanel.jsx
