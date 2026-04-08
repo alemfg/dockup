@@ -1,0 +1,91 @@
+arbx v6.7 — Log viewer fix, CPU -99%, sortable tables, alert rules, balance all-exchanges
+
+LOG VIEWER DISCONNECTED (docker/nginx.conf)
+────────────────────────────────────────────
+Root cause: nginx routed /api/ws/logs through the plain /api/ block which
+has no Upgrade headers. WebSocket handshake never completed → "disconnected".
+Fix: added a dedicated /api/ws/ location block with Upgrade+Connection headers
+and 86400s read timeout. The log viewer now connects and streams live.
+
+CPU -99% ON WORKERS (worker/worker.py)
+───────────────────────────────────────
+Root cause: _collect_and_publish() called fetch_ticker(pair) in a serial loop,
+making N sequential HTTP requests per tick (e.g. 200 pairs = 200 requests).
+At 2s tick interval this also caused 1013 stales — a worker with 200 pairs
+× 300ms each takes 60s to cycle, so everything was stale before it could loop.
+Fix: switched to fetch_tickers(pairs) — ONE batch call returns all prices at
+once. Reduces exchange requests by ~99%, eliminates the stale problem, and
+massively cuts CPU/bandwidth. Auto-detects exchanges that don't support batch
+and silently falls back to per-pair mode for those (runtime flag per client).
+New methods: _collect_batch(), _collect_per_pair(), _collect_simulated().
+
+"DIFFERENT LOOP" ERROR (api/routes/market.py)
+──────────────────────────────────────────────
+Root cause: market.py get_spreads() used brain.persistence.config_store (a
+pool created in the brain thread) inside an API route coroutine.
+Fix: switched to request.app.state.api_config_store (the API's own pool,
+same event loop as route handlers).
+
+VAULT/FLEETEVENTS SPINNER FOREVER (frontend/src/utils/api.js)
+───────────────────────────────────────────────────────────────
+Root cause: usePolling only cleared loading=false in finally block, but errors
+were swallowed before finally ran in some paths → loading stayed true forever.
+Fix: explicitly set loading=false in both success and error paths.
+Spinner now clears within 15s even if DB is down, showing the error message.
+
+"STARTING" STATUS BUG (api/routes/config_reload.py)
+──────────────────────────────────────────────────────
+Root cause: healthy counter used `not w.get("is_dead")` which has a 45s TTL
+grace period — newly registered workers showed as dead for up to 45s.
+Fix: count workers by actual status field: healthy/degraded/paused/overloaded
+= live. Dead/starting = not live. Exchange now shows "Live" immediately when
+the worker heartbeat has arrived.
+
+SORTABLE COLUMNS (FleetHealth, MarketFeed, ConfigReloadPanel)
+──────────────────────────────────────────────────────────────
+FleetHealth Worker Fleet: sortable by Worker ID, Exchange, Pairs, Status,
+  Latency. Also added "API Health" column showing per-worker error state:
+  blocked/rate-limited/auth-error/ok derived from heartbeat rate_limit data.
+MarketFeed Live Market Feed: sortable by Pair, Spread, Last seen. Removed
+  the dropdown sort selector — headers are now clickable directly.
+ConfigReloadPanel Exchange Manager: sortable by Exchange, Workers, Status.
+
+ALERT RULES PANEL (api/routes/config_reload.py + ConfigReloadPanel.jsx)
+─────────────────────────────────────────────────────────────────────────
+New "📢 Alert Rules" section in Config & Reload panel.
+6 built-in categories, each independently configurable:
+  • System Errors  — worker down, Redis/DB unreachable (default: ntfy+slack+telegram, critical)
+  • Market Alerts  — stale pairs, rate limits, exchange issues (default: ntfy, high)
+  • Opportunities  — spatial/graph arb, CR 9AM signals (default: ntfy+slack, default)
+  • Risk Events    — SL/TP hit, daily loss limit, drawdown (default: all channels, high)
+  • Order Events   — order placed/filled/failed (default: disabled)
+  • Operational    — config reload, worker spawn (default: disabled)
+Per category: enable/disable toggle, channel selector (ntfy/slack/discord/
+telegram/email/webhook), priority selector (critical/high/default/low/min).
+Backend endpoints: GET /api/alerts/categories, PATCH /api/alerts/categories/{id},
+POST /api/alerts/categories/reset.
+
+BALANCES PAGE — ALL CONFIGURED EXCHANGES (BalancesPanel.jsx)
+─────────────────────────────────────────────────────────────
+Now fetches /api/config/exchanges/active and shows ALL configured exchanges,
+not just those with balance data. Exchanges without balance show:
+  - "No API key" → directs to Vault
+  - "No worker running" → directs to Config → Exchanges
+  - "Worker active — click Sync Balances" → actionable
+  - "Worker starting…" → informational
+
+ANSWERS TO YOUR QUESTIONS
+──────────────────────────
+Docker Hub rate limit: happens at docker-rebuild time when Docker pulls base
+  images. Workers do NOT pull from Docker Hub at runtime. Fix: run
+  `docker pull python:3.12-slim && docker pull nginx:alpine` once to cache,
+  or add --pull=missing to the build Makefile target.
+
+Auto-execution: Spatial arb IS wired — on_spatial_spread() fires and places
+  orders when TRADING_MODE=simulate or live. 9AM CR is also wired via
+  on_cr_signal(). Both need TRADING_MODE != disabled to activate. Graph arb
+  has its own trigger too. All three are ready — just set TRADING_MODE=simulate
+  to start seeing decisions in the Orders panel.
+
+Stale pairs: caused by serial fetch_ticker() loop — fixed with fetch_tickers().
+  With batch mode, all 200 pairs update in one 500ms call instead of 60 seconds.
