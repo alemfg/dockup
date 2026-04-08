@@ -95,8 +95,14 @@ class Brain:
 
     def _setup_signals(self) -> None:
         loop = asyncio.get_event_loop()
+        def _on_shutdown():
+            # Tell AutoSpawner to stop reconciling BEFORE the event loop cancels tasks
+            # This prevents the watch loop from re-spawning workers during shutdown
+            if hasattr(self, 'auto_spawner'):
+                self.auto_spawner._shutdown = True
+            self._shutdown_event.set()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: self._shutdown_event.set())
+            loop.add_signal_handler(sig, _on_shutdown)
 
     def _print_banner(self) -> None:
         cfg = self.config.brain

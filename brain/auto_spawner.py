@@ -143,6 +143,7 @@ class AutoSpawner:
         # exchange → list of pair-slices (one per expected worker)
         self._plan:   Dict[str, List[List[str]]] = {}
         self._ready:  Set[str] = set()   # exchanges fully spawned at least once
+        self._shutdown = False            # set to True on brain shutdown to stop reconciliation
 
     # ── Public ────────────────────────────────────────────────────────────────
 
@@ -174,9 +175,16 @@ class AutoSpawner:
         logger.info(f"AutoSpawner: initial spawn complete — watch loop every {_WATCH_INTERVAL}s")
 
         # Watch loop — re-spawns any missing workers every interval
-        while True:
-            await asyncio.sleep(_WATCH_INTERVAL)
-            await self._reconcile(initial=False)
+        try:
+            while not self._shutdown:
+                await asyncio.sleep(_WATCH_INTERVAL)
+                if self._shutdown:
+                    break
+                await self._reconcile(initial=False)
+        except asyncio.CancelledError:
+            # Brain is shutting down — stop quietly, do NOT re-spawn
+            logger.info("AutoSpawner: cancelled — shutdown in progress, not re-spawning workers")
+            raise
 
     # ── Plan building ─────────────────────────────────────────────────────────
 

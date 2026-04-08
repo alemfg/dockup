@@ -176,6 +176,9 @@ docker-rebuild:
 	@echo "  ✅ Rebuild complete — version $(shell cat VERSION)"
 
 docker-down:
+	@echo "  Stopping brain first (prevents AutoSpawner re-spawning workers during shutdown)..."
+	@docker stop arb-brain 2>/dev/null || true
+	@docker stop arb-worker-manager 2>/dev/null || true
 	@echo "  Stopping auto-spawned worker containers..."
 	@docker ps -a --filter ancestor=arbx-worker:latest --format "{{.Names}}" \
 	  | xargs -r docker stop 2>/dev/null || true
