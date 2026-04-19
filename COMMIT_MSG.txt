@@ -1,0 +1,73 @@
+v6.9 — UI Stability & Bug Fixes
+
+CRITICAL FIXES
+──────────────
+usePolling infinite re-render loop (root cause of ALL spinner/blink bugs)
+  • Inline arrow functions passed as fetchFn created a new reference on
+    every render, causing useEffect to re-fire continuously.
+  • Fix: store fetchFn in a useRef inside the hook. Effect deps are now
+    [interval, tick] only — both primitives that change only intentionally.
+  • Affected panels fixed: Vault, Fleet Events, Listings, Orders (all blink
+    and spinner-loop issues resolved by this single fix).
+
+500% phantom arbitrage path
+  • math.exp(-log_sum) overflowed when log_sum was a large negative number
+    (caused by a stale or inverted rate in the graph). The result was clamped
+    to 6.0 (500%) and displayed as a real opportunity.
+  • Fix: if -log_sum > 20 (exp would exceed ~485M), return 0.0 (unprofitable)
+    instead of clamping. Upper cap lowered from 6.0 to 1.5 (50%) — no real
+    CEX arb exceeds this; genuine new-listing premiums stay visible.
+  • ArbitragePath.to_dict() now includes is_stale and max_edge_age_s fields.
+
+Decision engine log spam (4500+ blocked orders in hours)
+  • graph_arb on_graph_path fired every 5s, cooldown only set on PASS,
+    so the same blocked order was logged on every scan tick.
+  • Fix: cooldown is now set even on blocked orders, throttling re-logging
+    of the same risk-blocked signal to once per cooldown window.
+
+ORDERS PANEL (v6.9)
+───────────────────
+  • Added mode filter: ALL / SIMULATE / LIVE
+  • Added status filter: all / blocked / simulate / live / filled / cancelled
+  • Added source filter: all / graph_arb / spatial_arb / manual (dynamic)
+  • Empty pair column fixed: graph_arb blocked orders extract path from notes
+  • "Reason / Notes" column replaces ambiguous status display for blocked orders
+  • Showing X / Y total count when filters active
+
+GRAPH PANEL — LEG-BY-LEG BREAKDOWN
+────────────────────────────────────
+  • Each edge now shows: timestamp age (Ns ago), raw rate, effective rate,
+    fee %, slippage %, gas USD, log_weight
+  • Stale edges highlighted in yellow (>25s old)
+  • Path-level stale warning badge when any edge is stale (is_stale=true)
+
+9AM CR MODEL — HISTORY TAB
+───────────────────────────
+  • CR plugin now maintains an in-memory ring buffer of past signals (500 max)
+  • New /api/cr/history endpoint returns history newest-first
+  • CRPanel redesigned with three tabs: Live Signals / History / Daily State
+  • History rows show direction, pair, score, confidence, entry/TP1/SL;
+    expandable to full SignalCard detail
+
+BACKEND
+───────
+  • graph_arbitrage.py: stale-edge age warning in scan log (⚠ STALE(Ns))
+  • models.py: ArbitragePath.max_edge_age_s() property + to_dict() fields
+  • cr_signals.py: GET /api/cr/history route added
+  • engine.py: path notes now correctly reads "path" key from to_dict()
+
+FILES CHANGED
+─────────────
+frontend/src/utils/api.js                  usePolling stable-ref fix; stable fetchers
+frontend/src/components/OrdersPanel.jsx    full rewrite with filters
+frontend/src/components/FinancialEventsPanel.jsx  stable polling, no blink
+frontend/src/components/VaultPanel.jsx     stable fetch imports
+frontend/src/components/ListingsPanel.jsx  stable fetch imports
+frontend/src/components/GraphPanel.jsx     EdgeBreakdown with age; stale badge
+frontend/src/components/CRPanel.jsx        History tab added
+arbitrage/graph/models.py                  overflow fix; is_stale/max_edge_age_s
+arbitrage/graph/graph_arbitrage.py         stale-edge log warning
+brain/decision/engine.py                   cooldown-on-block; path key fix
+analysis/plugins/cr_9am/cr_plugin.py      signal history ring buffer
+api/routes/cr_signals.py                   /cr/history route
+VERSION                                    6.8 → 6.9
