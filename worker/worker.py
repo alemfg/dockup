@@ -425,15 +425,30 @@ class Worker:
         raw = await self._ccxt_client.fetch_balance()
 
         # Build a price map from already-known market state to estimate USD values
-        # without making extra API calls — use ticker cache if available
+        # without making extra API calls — use ticker cache if available.
+        # Guard: some exchanges return non-dict values in the tickers map (e.g.
+        # Binance includes an "info" key whose value is a string).
         ticker_cache: dict = {}
         try:
             tickers = await self._ccxt_client.fetch_tickers()
-            ticker_cache = {sym: t["last"] for sym, t in tickers.items() if t.get("last")}
+            ticker_cache = {
+                sym: t["last"]
+                for sym, t in tickers.items()
+                if isinstance(t, dict) and t.get("last")
+            }
         except Exception:
             pass  # USD estimation is best-effort — missing it is not fatal
 
-        for asset, total in raw.get("total", {}).items():
+        total_dict = raw.get("total", {})
+        if not isinstance(total_dict, dict):
+            total_dict = {}
+
+        published = 0
+        for asset, total in total_dict.items():
+            # Skip non-numeric entries — CCXT balance dicts sometimes contain
+            # an "info" key (string) or other metadata alongside the asset totals.
+            if not isinstance(total, (int, float)):
+                continue
             if not total or total == 0:
                 continue
             free   = raw.get("free", {}).get(asset, 0.0) or 0.0
@@ -455,8 +470,9 @@ class Worker:
                 "usd_value": usd_value,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
+            published += 1
 
-        logger.info(f"Published balances for {self.exchange} ({len(raw.get('total', {}))} assets)")
+        logger.info(f"Published balances for {self.exchange} ({published} assets)")
 
     # ─── Candle Loop (v4) ────────────────────────────────────────────────────
 

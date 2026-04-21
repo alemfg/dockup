@@ -160,7 +160,7 @@ class FleetMonitor:
                     groupname=group,
                     consumername=consumer_id,
                     streams={STREAM_HEARTBEATS: ">"},
-                    count=50,
+                    count=200,   # increased from 50 — handles startup burst of 1000+ heartbeats
                     block=1000,
                 )
                 if not results:
@@ -183,6 +183,13 @@ class FleetMonitor:
                                 f"Data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}\n"
                                 f"{traceback.format_exc()}"
                             )
+
+                # Trim stream to last 5000 entries to prevent unbounded growth
+                # and consumer group lag that causes false-dead detection on burst startup.
+                try:
+                    await r.xtrim(STREAM_HEARTBEATS, maxlen=5000, approximate=True)
+                except Exception:
+                    pass
 
             except asyncio.CancelledError:
                 break

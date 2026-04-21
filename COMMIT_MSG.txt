@@ -1,93 +1,71 @@
-ARBX v7.0 — Phantom Path Filter · Exposure Fix · Alert System · Graph UI
+ARBX v7.1 — 4 Bug Fixes from Live Log Analysis
 
 ────────────────────────────────────────────────────────────────────────
-BACKEND BUG FIXES
+BUG FIXES
 ────────────────────────────────────────────────────────────────────────
 
-[CRITICAL] storage/market_state.py — add missing get_open_position_usd()
-  The risk manager called this method on every order but it did not exist
-  in MarketState. The resulting AttributeError was caught silently and
-  treated as a block, causing ALL graph_arb orders to be blocked with
-  "Exchange exposure limit" regardless of actual exposure. Fixed by
-  implementing the method: scans _order_results for open/pending/partial
-  entries matching the given exchange+pair and sums their capital_usd.
+[CRITICAL] api/routes/market.py — NameError: 'pairs' not defined
+  The `get_spreads()` endpoint iterated `for pair in sorted(pairs)` but
+  `pairs` was never assigned in that function. `all_prices` was built
+  above, but the derivation step was missing. This caused a 500 on every
+  GET /api/market/spreads call, meaning the entire Spatial Arb panel
+  was broken at runtime — the UI showed empty/error state on every load.
+  Fix: added `pairs = list({p["pair"] for p in all_prices})` before the
+  loop.
 
-[CRITICAL] brain/decision/risk_manager.py — skip exposure check when
-  total_usd = 0 (no balance data loaded yet)
-  Original code: `if total > 0 and (ex_usd + capital) / total > limit`
-  When total=0 on startup (workers haven't reported balances), the
-  condition was never True, but total=0 also means the ratio is
-  undefined. Now the entire exchange exposure block is skipped when
-  total=0 so startup orders are not silently discarded.
+[HIGH] worker/worker.py — 'str' object has no attribute 'keys' (binance)
+  `_fetch_and_publish_balances()` called `fetch_tickers()` with no args,
+  then iterated the result as `{sym: t["last"] for sym, t in tickers.items()
+  if t.get("last")}`. Binance's CCXT response includes non-dict entries
+  (e.g. an "info" key whose value is a JSON string). Calling `.get("last")`
+  on a string throws AttributeError. The outer error handler caught it and
+  logged `Worker error: 'str' object has no attribute 'keys'` — once every
+  2 seconds continuously, burying all other log output.
+  A secondary issue: `raw.get("total", {}).items()` can include non-numeric
+  asset entries (e.g. "info") which also fail on the `not total` check.
+  Fix: added `isinstance(t, dict)` guard in the ticker comprehension;
+  added `isinstance(total_dict, dict)` guard on the raw balance dict;
+  added `isinstance(total, (int, float))` guard before processing each
+  asset entry.
 
-[CRITICAL] arbitrage/graph/models.py — fix phantom 50% profit cycles
-  Root cause: some exchanges (LBank, MEXC) report certain pairs in a
-  non-USDT denomination, producing effective_rate values like 99.9 for
-  KAVA/USDT (real price ~$0.6). This leaked through the old clamp of
-  min(1.5, product), producing fake +50% gross_product cycles.
-  Fix — three layered guards:
-    1. Per-edge check: any effective_rate > 200 → return 0.0 immediately
-    2. log-space guard: -log_sum > 3 (≡ exp(3)≈20x) → return 0.0
-    3. Final clamp: min(1.05, product) — max 5% gross, not 50%
-  Real triangular arb on CEX does not exceed ~3% gross. New-listing
-  spikes handled by the listings module, not graph arb.
+[MEDIUM] brain/fleet/monitor.py — false mass respawn at startup (~11min)
+  All workers simultaneously showed "Heartbeat lost — worker presumed dead"
+  at 23:18, approximately 11 minutes after startup. Workers were healthy —
+  prices were still publishing — but the fleet monitor's consumer group had
+  fallen behind during the startup burst (1000+ heartbeats in seconds with
+  batch read of only 50 at a time). The unconsumed backlog caused the
+  monitor's xreadgroup to block waiting for new messages while the unread
+  old ones were not counting as "recent", so is_dead() fired for all workers
+  simultaneously.
+  Fix 1: increased xreadgroup count from 50 → 200 to drain bursts faster.
+  Fix 2: added `r.xtrim(STREAM_HEARTBEATS, maxlen=5000, approximate=True)`
+  after each batch to cap stream length and prevent unbounded lag buildup.
 
-────────────────────────────────────────────────────────────────────────
-FRONTEND — ALERT SYSTEM
-────────────────────────────────────────────────────────────────────────
-
-[NEW] frontend/src/components/AlertBanner.jsx — global alert strip
-  Injected between StatusBar and page content. Visible on every tab.
-  Polls /api/system/status + /api/fleet/workers + /api/graph/paths
-  every 5s. Shows compact coloured banners for:
-
-    ⚡ GREEN  — profitable cycles detected (count + best path detail)
-               "View →" button navigates directly to Graph Arb tab
-    ⛔ RED    — worker blocked (ip_block / status=blocked)
-    🔑 RED    — auth error on exchange (navigates to Security tab)
-    ⚠  YELLOW — high error count on worker (>10 errors)
-    🚦 YELLOW — rate limiting active (429s)
-    🕐 YELLOW/RED — stale price contexts above threshold
-    🛑 RED    — risk system HALTED (navigates to Risk & Rules tab)
-
-  Each alert is individually dismissable (×). Dismissed alerts
-  re-surface automatically if the underlying condition changes
-  (e.g. a new profitable cycle fires after the old one was dismissed).
-
-[FIX] frontend/src/App.jsx — wire AlertBanner + unified navigateTo()
-  Replaced inline `setTab(t.id); setSelectedWorker(null)` with a
-  shared navigateTo() function, allowing AlertBanner's "View →" buttons
-  to deep-link into the correct tab from any page.
+[LOW] brain/listing_monitor.py — CoinGecko 401 every 5 minutes
+  The /coins/list/new endpoint now requires authentication. The monitor was
+  calling it without any headers, always getting 401, and spamming the log
+  every poll cycle.
+  Fix: reads COINGECKO_API_KEY from env; if set, sends it as
+  `x-cg-demo-api-key` header (CoinGecko demo/free tier format). If still
+  401 (no key configured), log message now includes the actionable URL
+  instead of just the status code.
 
 ────────────────────────────────────────────────────────────────────────
-FRONTEND — GRAPH VISUALIZATION
+CONFIG
 ────────────────────────────────────────────────────────────────────────
 
-[NEW] CycleGraph component — clean circular path diagram
-  Renders a single arbitrage cycle as a minimal SVG ring: asset nodes
-  arranged in a circle, green directed arrows between them, exchange
-  name and effective_rate on each edge. No force layout, no noise.
-  Shown inside each expanded PathCard so the cycle is immediately
-  readable without the full graph hairball.
-
-[NEW] "Isolate cycles" toggle on Currency Graph card
-  When active: filters the full force-directed graph to show ONLY nodes
-  and edges that participate in at least one profitable cycle.
-  Dramatically reduces noise when 60+ nodes are present. Toggle
-  highlights green when active. Subtitle updates to reflect mode.
-
-[NEW] Execution steps section in expanded PathCard
-  Numbered step-by-step action guide per path:
-    1. BUY  <from> → <to>  on <exchange>  ×rate  -fee%
-    2. SWAP ...
-    n. SELL ...
-  Cross-exchange transitions are flagged with a ⟳ transfer warning
-  showing which asset needs to move between which exchanges before
-  the next leg can execute. Makes manual verification of a path
-  instant without reading the raw edge table.
+config/.env.local.example — documented 3 new config items:
+  COINGECKO_API_KEY  — free key from coingecko.com/api, fixes listings 401
+  BITMART_UID        — required by Bitmart for balance fetching (not prices)
+  MEXC note          — balance fix is exchange-side (enable "Account Info"
+                       permission on the API key in MEXC console, no code change)
 
 ────────────────────────────────────────────────────────────────────────
-INFRA
+NOT FIXED HERE (exchange-side config required by user)
 ────────────────────────────────────────────────────────────────────────
 
-VERSION: 6.9 → 7.0
+  Bitmart balance 700007: add BITMART_UID= to .env.local
+  MEXC balance 700007:    enable Account Info permission on MEXC API key
+  Both: prices (public endpoints) are unaffected — only balance polling fails
+
+VERSION: 7.0 → 7.1

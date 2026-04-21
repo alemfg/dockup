@@ -39,6 +39,7 @@ logger = get_logger("brain.listing_monitor")
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 _COINGECKO_NEW_URL = "https://api.coingecko.com/api/v3/coins/list/new"
+_COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "")   # set in .env.local — free key at coingecko.com
 _POLL_INTERVAL_S   = int(os.getenv("LISTING_POLL_INTERVAL_S", "300"))   # 5 min
 _ALERT_THRESHOLD   = float(os.getenv("LISTING_ALERT_THRESHOLD_PCT", "5.0"))
 _MAX_HISTORY       = 200
@@ -184,17 +185,29 @@ class ListingMonitor:
         await self._scan_watchlist()
 
     async def _fetch_cg_listings(self) -> None:
-        """Fetch recently added coins from CoinGecko (free tier, no key)."""
+        """Fetch recently added coins from CoinGecko.
+        Uses COINGECKO_API_KEY env var if set (free key at coingecko.com/api).
+        Without a key CoinGecko now returns 401 on the /coins/list/new endpoint.
+        """
         try:
+            headers = {}
+            if _COINGECKO_API_KEY:
+                # Demo/free API key uses x-cg-demo-api-key header
+                headers["x-cg-demo-api-key"] = _COINGECKO_API_KEY
             async with aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=15)
             ) as session:
-                async with session.get(_COINGECKO_NEW_URL) as resp:
+                async with session.get(_COINGECKO_NEW_URL, headers=headers) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         self._cg_listings = data[:50] if isinstance(data, list) else []
                         self._cg_fetched_at = time.time()
                         logger.info(f"[Listings] CoinGecko: {len(self._cg_listings)} new listings fetched")
+                    elif resp.status == 401:
+                        logger.warning(
+                            "[Listings] CoinGecko returned 401 — set COINGECKO_API_KEY in .env.local "
+                            "(free key at https://www.coingecko.com/en/api)"
+                        )
                     else:
                         logger.warning(f"[Listings] CoinGecko returned {resp.status}")
         except Exception as exc:

@@ -39,6 +39,7 @@ async def get_spreads(request: Request):
     # Build diagnostics: per-pair exchange coverage
     # pairs_single = pairs that only have 1 exchange (can't form a spread)
     all_prices     = ms.get_all_prices()
+    pairs          = list({p["pair"] for p in all_prices})   # was missing — caused NameError
     active_exchanges = sorted({p["exchange"] for p in all_prices})
     pairs_single   = []
     pairs_multi    = []
