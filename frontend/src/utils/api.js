@@ -1,0 +1,184 @@
+import axios from 'axios'
+import { useEffect, useRef, useState, useCallback } from 'react'
+
+const api = axios.create({ baseURL: '/api' })
+
+// ─── REST ─────────────────────────────────────────────────────────────────
+export const fetchSystemStatus  = () => api.get('/system/status').then(r => r.data)
+export const fetchFleetWorkers  = () => api.get('/fleet/workers').then(r => r.data)
+export const fetchWorker        = (id) => api.get(`/fleet/workers/${id}`).then(r => r.data)
+export const fetchFleetEvents   = (limit=100) => api.get(`/fleet/events?limit=${limit}`).then(r => r.data)
+export const fetchCoverage      = () => api.get('/fleet/coverage').then(r => r.data)
+export const killWorker         = (id) => api.post(`/fleet/workers/${id}/kill`).then(r => r.data)
+export const restartWorker      = (id) => api.post(`/fleet/workers/${id}/restart`).then(r => r.data)
+export const pauseWorker        = (id) => api.post(`/workers/${id}/pause`).then(r => r.data)
+export const resumeWorker       = (id) => api.post(`/workers/${id}/resume`).then(r => r.data)
+export const reloadWorker       = (id) => api.post(`/workers/${id}/reload`).then(r => r.data)
+export const reloadAllWorkers   = () => api.post('/workers/all/reload').then(r => r.data)
+export const killAllWorkers     = () => api.post('/workers/all/kill').then(r => r.data)
+export const spawnWorker        = (payload) => api.post('/workers/spawn', payload).then(r => r.data)
+export const reassignPairs      = (id, pairs) => api.post(`/workers/${id}/reassign`, pairs).then(r => r.data)
+export const fetchContexts      = () => api.get('/analysis/contexts').then(r => r.data)
+export const fetchSignals       = () => api.get('/analysis/signals').then(r => r.data)
+export const fetchPrices        = () => api.get('/market/prices').then(r => r.data)
+export const fetchSpreads       = () => api.get('/market/spreads').then(r => r.data)
+export const fetchBalances        = () => api.get('/balances').then(r => r.data)
+export const fetchBalanceSummary   = () => api.get('/balances/summary').then(r => r.data)
+export const fetchBalanceTargets   = () => api.get('/balances/targets').then(r => r.data)
+export const saveBalanceTargets    = (targets) => api.put('/balances/targets', { targets }).then(r => r.data)
+export const suggestRebalance      = (body={}) => api.post('/balances/rebalance/suggest', body).then(r => r.data)
+export const executeRebalance      = (body) => api.post('/balances/rebalance/execute', body).then(r => r.data)
+export const fetchSecurityInfo  = () => api.get('/security/workers').then(r => r.data)
+export const registerWorker     = (payload) => api.post('/security/workers/register', payload).then(r => r.data)
+export const revokeWorker       = (id) => api.post(`/security/workers/${id}/revoke`).then(r => r.data)
+export const fetchCRSignals       = () => api.get('/cr/signals').then(r => r.data)
+export const setCRForceActive     = (active) => api.post('/cr/force-active', { active }).then(r => r.data)
+
+// Orders
+export const fetchOrders          = (params = {}) => api.get('/orders', { params }).then(r => r.data)
+export const fetchOpenOrders      = () => api.get('/orders/open').then(r => r.data)
+export const fetchOrderLog        = (limit = 200) => api.get('/orders/log', { params: { limit } }).then(r => r.data)
+export const fetchDailyPnl        = () => api.get('/orders/daily-pnl').then(r => r.data)
+
+// Positions
+export const fetchPositions       = () => api.get('/positions').then(r => r.data)
+export const fetchClosedPositions = (limit = 50) => api.get('/positions/closed', { params: { limit } }).then(r => r.data)
+export const closePosition        = (id, reason = 'manual') => api.post(`/positions/${id}/close`, { reason }).then(r => r.data)
+
+// Risk
+export const fetchRiskStatus      = () => api.get('/risk/status').then(r => r.data)
+export const resumeAfterHalt      = () => api.post('/risk/resume').then(r => r.data)
+export const fetchRiskConfig      = () => api.get('/risk/config').then(r => r.data)
+export const updateRiskConfig     = (updates) => api.patch('/risk/config', updates).then(r => r.data)
+export const fetchDecisionConfig  = () => api.get('/risk/decision-config').then(r => r.data)
+export const updateDecisionConfig = (updates) => api.patch('/risk/decision-config', updates).then(r => r.data)
+
+// Financials
+export const fetchFinancialSummary = () => api.get('/financials/summary').then(r => r.data)
+export const fetchTrades           = (limit = 50) => api.get('/financials/trades', { params: { limit } }).then(r => r.data)
+
+// Logs
+export const fetchLogs             = (limit = 200, level = '') => api.get('/logs', { params: { limit, level } }).then(r => r.data)
+export const fetchTradingMode   = () => api.get('/trading/mode').then(r => r.data)
+export const setTradingMode     = (mode, confirm=false) => api.post('/trading/mode', { mode, confirm }).then(r => r.data)
+export const setExchangeTrading = (exchange, enabled) => api.post(`/trading/exchanges/${exchange}`, { enabled }).then(r => r.data)
+
+// ─── WebSocket Hook ───────────────────────────────────────────────────────
+export function useWebSocket(path) {
+  const [data,   setData]   = useState(null)
+  const [status, setStatus] = useState('connecting')
+  const wsRef    = useRef(null)
+  const timerRef = useRef(null)
+
+  const connect = useCallback(() => {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const ws    = new WebSocket(`${proto}://${window.location.host}${path}`)
+    wsRef.current = ws
+    ws.onopen    = () => setStatus('connected')
+    ws.onclose   = () => { setStatus('reconnecting'); timerRef.current = setTimeout(connect, 3000) }
+    ws.onerror   = () => ws.close()
+    ws.onmessage = (e) => { try { setData(JSON.parse(e.data)) } catch {} }
+  }, [path])
+
+  useEffect(() => {
+    connect()
+    return () => { clearTimeout(timerRef.current); wsRef.current?.close() }
+  }, [connect])
+
+  return { data, status }
+}
+
+// ─── Polling Hook (v6.9 — stable fetchFn ref via useRef) ──────────────────
+// Root cause of blink/spinner-loop bugs: passing an inline arrow fn as fetchFn
+// creates a new reference every render, which triggers the useEffect every render.
+// Fix: store fetchFn in a ref so the effect only re-runs when interval or tick changes.
+export function usePolling(fetchFn, interval = 5000) {
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+  const [tick,    setTick]    = useState(0)
+
+  // Keep latest fetchFn in a ref — effect never re-subscribes due to fn identity change
+  const fnRef = useRef(fetchFn)
+  useEffect(() => { fnRef.current = fetchFn }, [fetchFn])
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const result = await fnRef.current()
+        if (!cancelled) { setData(result); setError(null); setLoading(false) }
+      } catch (e) {
+        if (!cancelled) { setError(e.message); setLoading(false) }
+      }
+    }
+    load()
+    const id = setInterval(load, interval)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [interval, tick])   // ← fetchFn intentionally excluded; fnRef handles updates
+
+  const refresh = useCallback(() => setTick(t => t + 1), [])
+
+  return { data, loading, error, refresh }
+}
+
+// Config reload (v4)
+export const reloadBrainConfig    = () => api.post('/config/reload/brain').then(r => r.data)
+export const reloadWorkersConfig  = () => api.post('/config/reload/workers').then(r => r.data)
+export const fetchCurrentConfig   = () => api.get('/config/current').then(r => r.data)
+
+// CR daily state (v4)
+export const fetchCRDailyState    = () => api.get('/cr/state').then(r => r.data)
+
+// Graph config (v4.3)
+export const fetchGraphConfig     = () => api.get('/graph/config').then(r => r.data)
+
+// Financial events (v4.5)
+export const fetchFinancialEvents = (category = '', level = '', limit = 300) =>
+  api.get('/events', { params: { category, level, limit } }).then(r => r.data)
+
+// ── v5.0 Config & Exchange management ────────────────────────────────────────
+export const patchConfig         = (section, key, value) =>
+  api.post('/config/patch', { section, key, value }).then(r => r.data)
+
+export const fetchSupportedExchanges = () =>
+  api.get('/config/exchanges/supported').then(r => r.data)
+
+export const fetchActiveExchanges = () =>
+  api.get('/config/exchanges/active').then(r => r.data)
+
+export const updateExchange = (exchange, pairs, enabled = true) =>
+  api.post('/config/exchanges/update', { exchange, pairs, enabled }).then(r => r.data)
+
+export const testAlerts   = () => api.post('/alerts/test').then(r => r.data)
+export const testExchange = (exchange) => api.post('/config/exchanges/test', { exchange }).then(r => r.data)
+
+// ── v6.0 Vault API ────────────────────────────────────────────────────────────
+export const fetchApiKeys        = () => api.get('/vault/apikeys').then(r => r.data)
+export const saveApiKey          = (body) => api.post('/vault/apikeys', body).then(r => r.data)
+export const deleteApiKey        = (exchange, label='main') => api.delete(`/vault/apikeys/${exchange}?label=${label}`).then(r => r.data)
+export const testApiKey          = (exchange, label='main') => api.post(`/vault/apikeys/${exchange}/test?label=${label}`).then(r => r.data)
+export const fetchWallets        = (exchange) => api.get('/vault/wallets', { params: exchange ? { exchange } : {} }).then(r => r.data)
+export const saveWallet          = (body) => api.post('/vault/wallets', body).then(r => r.data)
+export const deleteWallet        = (id) => api.delete(`/vault/wallets/${id}`).then(r => r.data)
+export const fetchExchangeFees   = () => api.get('/vault/fees').then(r => r.data)
+export const updateExchangeFee   = (exchange, taker_pct, maker_pct) => api.put(`/vault/fees/${exchange}`, { taker_pct, maker_pct }).then(r => r.data)
+export const fetchWithdrawalFees = (params={}) => api.get('/vault/withdrawal-fees', { params }).then(r => r.data)
+export const planTransfer        = (body) => api.post('/vault/transfer/plan', body).then(r => r.data)
+export const executeTransfer     = (body) => api.post('/vault/transfer/execute?confirm=true', body).then(r => r.data)
+
+// ── v6.9 CR history ───────────────────────────────────────────────────────────
+export const fetchCRHistory       = (limit = 100) => api.get('/cr/history', { params: { limit } }).then(r => r.data)
+
+// ── v6.9 Vault stable fetchers (avoid inline arrow in usePolling) ─────────────
+export const fetchVaultApiKeys        = () => api.get('/vault/apikeys').then(r => r.data)
+export const fetchVaultWallets        = () => api.get('/vault/wallets').then(r => r.data)
+export const fetchVaultFees           = () => api.get('/vault/fees').then(r => r.data)
+export const fetchVaultWithdrawalFees = () => api.get('/vault/withdrawal-fees').then(r => r.data)
+
+// ── v6.9 Listings stable fetchers ────────────────────────────────────────────
+export const fetchListingsWatchlist    = () => api.get('/listings/watchlist').then(r => r.data)
+export const fetchListingsNew          = () => api.get('/listings/new?limit=30').then(r => r.data)
+export const fetchListingsOpportunities= () => api.get('/listings/opportunities?limit=100').then(r => r.data)
+export const fetchListingsStatus       = () => api.get('/listings/status').then(r => r.data)
